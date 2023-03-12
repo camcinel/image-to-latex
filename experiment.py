@@ -90,8 +90,8 @@ class Experiment(object):
         for epoch in range(start_epoch, self.__epochs):  # loop over the dataset multiple times
             start_time = datetime.now()
             self.__current_epoch = epoch
-            train_loss = self.__train()
-            val_loss = self.__val()
+            train_loss = self.__train(epoch)
+            val_loss = self.__val(epoch)
             if self.__val_losses and val_loss > self.__val_losses[-1]:
                 cur_patience += 1
             else:
@@ -104,12 +104,14 @@ class Experiment(object):
                 break
 
     # Perform one training iteration on the whole dataset and return loss value
-    def __train(self):
+    def __train(self, epoch):
         self.__model.train()
         training_loss = cnt = 0
 
         # Iterate over the data, implement the training function
-        for data in self.__train_loaders:
+        n_loaders = len(self.__train_loaders)
+        for loader_num, data in enumerate(self.__train_loaders):
+            n_batches = len(data)
             for i, (images, captions) in enumerate(data):
                 self.__optimizer.zero_grad()
 
@@ -125,19 +127,22 @@ class Experiment(object):
                 cnt += images.size(0)
 
                 if i % 10 == 0:
-                    print(f'Iteration {i}\tLoss {training_loss / cnt}')
+                    print('[%d/%d]\t[%d/%d]\t[%d/%d]\tAverage Loss: %.4f'
+                          % (epoch, self.__epochs, loader_num, n_loaders, i, n_batches, training_loss / cnt))
 
             self.scheduler.step()
         training_loss /= cnt
         return training_loss
 
     # Perform one Pass on the validation set and return loss value. You may also update your best model here.
-    def __val(self):
+    def __val(self, epoch):
         self.__model.eval()
         val_loss = cnt = 0
 
         with torch.no_grad():
-            for data in self.__val_loaders:
+            n_loaders = len(self.__val_loaders)
+            for loader_num, data in enumerate(self.__val_loaders):
+                n_batches = len(data)
                 for i, (images, captions) in enumerate(data):
                     images = images.contiguous().to(self.device)
                     captions = captions.contiguous().to(self.device)
@@ -145,6 +150,10 @@ class Experiment(object):
                     loss = self.__criterion(output.view(-1, len(self.__vocab)), captions.view(-1).to(self.device))
                     val_loss += loss * images.size(0)
                     cnt += images.size(0)
+
+                    if i % 10 == 0:
+                        print('[%d/%d]\t[%d/%d]\t[%d/%d]\tAverage Loss: %.4f'
+                              % (epoch, self.__epochs, loader_num, n_loaders, i, n_batches, val_loss / cnt))
 
         val_loss /= cnt
         if not self.__val_losses or val_loss < min(self.__val_losses):
