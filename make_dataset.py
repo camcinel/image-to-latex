@@ -36,7 +36,6 @@ class MyDataset(data.Dataset):
         # TODO: add normalization, change the padding for centering the image.
         image = Image.open(os.path.join(self.root, path)).convert('RGBA').getchannel("A")
         image = np.array(image) / 255
-        print(image[0])
         image = torch.tensor(image, dtype=torch.float32)
         n, m = image.shape
         transform = transforms.Compose([

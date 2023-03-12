@@ -26,7 +26,7 @@ class Experiment(object):
 
         self.__name = config_data['experiment_name']
         self.__experiment_dir = os.path.join(ROOT_STATS_DIR, self.__name)
-        self.device =  torch.device('cuda' if torch.has_cuda else 'cpu')
+        self.device = torch.device('cuda' if torch.has_cuda else 'cpu')
 
         # Load Datasets
         self.__vocab, self.__train_loaders, self.__val_loaders, self.__test_loaders = get_datasets(
@@ -42,13 +42,14 @@ class Experiment(object):
             self.__patience = config_data['experiment']['patience']
         else:
             self.__patience = 5
-            
+
         # Init Model
         self.__model = get_model(config_data, self.__vocab).to(self.device)
 
-        self.__best_model = copy.deepcopy(self.__model)  # Save your best model in this field and use this in test method.
-    
-        #Set these Criterion and Optimizers Correctly
+        self.__best_model = copy.deepcopy(
+            self.__model)  # Save your best model in this field and use this in test method.
+
+        # Set these Criterion and Optimizers Correctly
         self.__criterion = nn.CrossEntropyLoss()
         self.__optimizer = optim.Adam(self.__model.parameters(), lr=config_data['experiment']['learning_rate'])
 
@@ -111,14 +112,21 @@ class Experiment(object):
         for data in self.__train_loaders:
             for i, (images, captions) in enumerate(data):
                 self.__optimizer.zero_grad()
+
                 images = images.contiguous().to(self.device)
                 captions = captions.contiguous().to(self.device)
+
                 output = self.__model(images, captions).contiguous().to(self.device)
                 loss = self.__criterion(output.view(-1, len(self.__vocab)), captions.view(-1).to(self.device))
                 loss.backward()
                 self.__optimizer.step()
+
                 training_loss += loss * images.size(0)
                 cnt += images.size(0)
+
+                if i % 10 == 0:
+                    print(f'Iteration {i}\tLoss {training_loss / cnt}')
+
             self.scheduler.step()
         training_loss /= cnt
         return training_loss
@@ -137,12 +145,12 @@ class Experiment(object):
                     loss = self.__criterion(output.view(-1, len(self.__vocab)), captions.view(-1).to(self.device))
                     val_loss += loss * images.size(0)
                     cnt += images.size(0)
-        
+
         val_loss /= cnt
         if not self.__val_losses or val_loss < min(self.__val_losses):
             self.__save_best_model()
             self.__best_model = copy.deepcopy(self.__model)
-        
+
         return val_loss
 
     #  Implement your test function here. Generate sample captions and evaluate loss and
@@ -159,7 +167,8 @@ class Experiment(object):
                     images = images.contiguous().to(self.device)
                     captions = captions.contiguous().to(self.device)
                     output_loss = self.__best_model(images, captions).contiguous().to(self.device)
-                    test_loss += self.__criterion(output_loss.view(-1, len(self.__vocab)), captions.view(-1)) * images.size(0)
+                    test_loss += self.__criterion(output_loss.view(-1, len(self.__vocab)),
+                                                  captions.view(-1)) * images.size(0)
                     cnt += images.size(0)
 
                     output = self.__best_model.predict(images, self.__generation_config)
@@ -173,7 +182,7 @@ class Experiment(object):
         _bleu1 /= cnt
         _bleu4 /= cnt
         test_loss /= cnt
-                
+
         result_str = "Test Performance: Loss: {}, Bleu1: {}, Bleu4: {}".format(test_loss, _bleu1, _bleu4)
         self.__log(result_str)
         print(f'The actual cap is: {actual_cap} The prediction is:{output_cap}')
