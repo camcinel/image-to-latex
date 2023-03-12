@@ -27,6 +27,7 @@ def get_coco_dataloader(imgs_root_dir, meta_data_path, config_data):
     meta_data = pd.read_pickle(meta_data_path)
     padded_lengths = meta_data['padded_seq_len'].unique()
     np.random.shuffle(padded_lengths)
+    padded_lengths = padded_lengths[:2]
     for padded_length in padded_lengths:
         data = meta_data[meta_data['padded_seq_len'] == padded_length]
         dataset = MyDataset(root=imgs_root_dir,

@@ -24,13 +24,5 @@ def get_caption(output, vocab, config):
     return [vocab.idx2word[idx.item()] for idx in pred]
 
 def remove(captions):
-    """special_token = set(['<pad>', '<start>', '<unk>'])
-    output = []
-    for x in captions:
-        if x == '<end>':
-            return output
-        if x not in special_token:
-            output.append(x)
-    return output"""
-    special_token = set(['<pad>', '<start>', '<end>', '<unk>'])
+    special_token = set(['\\bos', '\\eos'])
     return [x for x in captions if x not in special_token]

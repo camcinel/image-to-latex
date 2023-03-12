@@ -162,10 +162,10 @@ class Experiment(object):
                     test_loss += self.__criterion(output_loss.view(-1, len(self.__vocab)), captions.view(-1)) * images.size(0)
                     cnt += images.size(0)
 
-                    output = self.__best_model.predict(images, self.__generation_config)
+                    output = self.__best_model.predict(images)
                     for j in range(images.size(0)):
                         # TODO: Implement actual captions retrieval
-                        actual_cap = remove([self.__vocab.idx2word[x] for x in captions[j]])
+                        actual_cap = remove([self.__vocab.idx2word[x.item()] for x in captions[j]])
                         output_cap = remove(get_caption(output[j], self.__vocab, self.__generation_config))
                         _bleu1 += bleu1([actual_cap], output_cap)
                         _bleu4 += bleu4([actual_cap], output_cap)
