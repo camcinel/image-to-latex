@@ -15,7 +15,6 @@ class Encoder(nn.Module):
         self.tanh = nn.Tanh()
 
     def forward(self, x):
-        x = x.unsqueeze(1)
         x = self.maxpool(self.tanh(self.conv1(x)))
         x = self.maxpool(self.tanh(self.conv2(x)))
         x = self.maxpool(self.tanh(self.conv3(x)))
@@ -52,28 +51,54 @@ class InitStateModel(nn.Module):
 
 
 class AttentionBlock(nn.Module):
-    def __init__(self, L, D, hidden_size):
+    def __init__(self, D, hidden_size):
         super().__init__()
-        self.L = L
-        self.D = D
 
         self.mlp = nn.Sequential(
-            nn.Linear(L * (D + hidden_size), 256, bias=True),
+            nn.Linear(D + hidden_size, 256, bias=True),
             nn.Tanh(),
             nn.Linear(256, 128, bias=True),
             nn.Tanh(),
-            nn.Linear(128, L, bias=True),
-            nn.Softmax(dim=1)
+            nn.Linear(128, 1, bias=True)
         )
 
-    def forward(self, a, h):
-        h = h.unsqueeze(1)
-        h = torch.cat([h] * self.L, dim=1)
-        batch_size = a.size(0)
-        alpha = self.mlp(torch.cat((a, h), dim=2).view(batch_size, -1))
-        z = torch.bmm(alpha.reshape(batch_size, 1, -1), a)
+        self.softmax = nn.Softmax(dim=1)
 
-        return z.squeeze(1)
+    def forward(self, a, h):
+        h = h.unsqueeze(1).repeat(1, a.size(1), 1)
+        att_input = torch.cat((a, h), dim=2)
+
+        alpha = self.mlp(att_input).squeeze(2)
+        alpha = self.softmax(alpha)
+        # z = torch.bmm(alpha, a)
+        z = (alpha.unsqueeze(2) * a).sum(dim=1)
+
+        return z
+
+
+"""
+class AttentionBlock(nn.Module):
+    def __init__(self, D, hidden_size):
+        super().__init__()
+
+        self.enc_att = nn.Linear(D, 256)
+        self.dec_att = nn.Linear(hidden_size, 256)
+        self.full_att = nn.Linear(256, 1)
+
+        self.relu = nn.ReLU()
+
+        self.softmax = nn.Softmax(dim=1)
+
+    def forward(self, a, h):
+        att1 = self.enc_att(a)
+        att2 = self.dec_att(h)
+        att = self.full_att(self.relu(att1 + att2.unsqueeze(1))).squeeze(2)
+        alpha = self.softmax(att)
+
+        z = (a * alpha.unsqueeze(2)).sum(dim=1)
+
+        return z
+"""
 
 
 class CALSTM(nn.Module):
@@ -82,7 +107,7 @@ class CALSTM(nn.Module):
         self.vocab = vocab
         self.pad_idx = vocab.word2idx['\pad']
 
-        self.attention = AttentionBlock(L, D, hidden_size)
+        self.attention = AttentionBlock(D, hidden_size)
         self.lstm = nn.LSTM(input_size=D + embedding_size, hidden_size=hidden_size, num_layers=n_layers,
                             batch_first=True)
         self.embed = nn.Embedding(len(vocab), embedding_size)
@@ -105,15 +130,16 @@ class CALSTM(nn.Module):
 
     def predict(self, a, hidden, prev_word=None):
         if prev_word is None:
-            prev_word = torch.tensor([self.pad_idx] * a.size(0), device=a.get_device()).view(-1, 1)  # initial word is '\\pad'
+            prev_word = torch.tensor([self.pad_idx] * a.size(0), dtype=torch.long, device=a.get_device()).view(-1,
+                                                                                                               1)  # initial word is '\\pad'
 
         prev_word = self.embed(prev_word).squeeze(1)
         h, c = hidden
         z = self.attention(a, h[-1])
         input = torch.cat((z, prev_word), dim=1)
-        output, hidden = self.lstm(input.unsqueeze(1), hidden)
+        output, hidden_t = self.lstm(input.unsqueeze(1), hidden)
         hze = torch.cat((output.squeeze(1), z, prev_word), dim=1).unsqueeze(1)
-        return hze, hidden
+        return hze, hidden_t
 
 
 class Decoder(nn.Module):
@@ -145,10 +171,11 @@ class Decoder(nn.Module):
         captions = []
         for _ in range(a.size(0)):
             captions.append([])
-        add_more = [True] * a.size(0)  # tells model to add another word. Marked to false when the last word added is '\\end'
+        add_more = [True] * a.size(
+            0)  # tells model to add another word. Marked to false when the last word added is '\\end'
 
         for _ in range(self.max_length):
-            hze, hidden = self.calstm.predict(a, hidden, prev_word=prev_word)
+            hze, hidden_t = self.calstm.predict(a, hidden, prev_word=prev_word)
             pred = self.deep_output_layer(hze).squeeze(1)
             pred.div_(self.temperature)
             pred = nn.functional.softmax(pred, dim=1)
@@ -167,6 +194,7 @@ class Decoder(nn.Module):
                 break
 
             prev_word = word_idx
+            hidden = hidden_t
         return captions
 
 
