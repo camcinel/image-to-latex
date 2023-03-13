@@ -9,7 +9,7 @@
     "img_h": 128,
     "img_w": 1088,
     "batch_size": 16,
-    "num_workers": 10
+    "num_workers": 2
   },
   "experiment": {
     "num_epochs": 10,

@@ -51,7 +51,7 @@ class Experiment(object):
 
         # Set these Criterion and Optimizers Correctly
         self.__criterion = nn.CrossEntropyLoss()
-        self.__optimizer = optim.Adam(self.__model.parameters(), lr=config_data['experiment']['learning_rate'])
+        self.__optimizer = optim.Adam(self.__model.parameters(), lr=config_data['experiment']['learning_rate'], weight_decay=5e-5)
 
         self.__init_model()
 
@@ -115,11 +115,12 @@ class Experiment(object):
             for i, (images, captions) in enumerate(data):
                 self.__optimizer.zero_grad()
 
-                images = images.contiguous().to(self.device)
-                captions = captions.contiguous().to(self.device)
+                images = images.to(self.device)
+                captions = captions.to(self.device)
 
-                output = self.__model(images, captions).contiguous().to(self.device)
-                loss = self.__criterion(output.view(-1, len(self.__vocab)), captions.view(-1).to(self.device))
+                output = self.__model(images, captions)
+
+                loss = self.__criterion(output.transpose(1, 2), captions)
                 loss.backward()
                 self.__optimizer.step()
 
@@ -129,6 +130,12 @@ class Experiment(object):
                 if i % 10 == 0:
                     print('[%d/%d]\t[%d/%d]\t[%d/%d]\tAverage Loss: %.4f'
                           % (epoch, self.__epochs, loader_num, n_loaders, i, n_batches, training_loss / cnt))
+                if (i - 1) % 100 == 0:
+                    print('Sample Captions:')
+                    captions = self.__model.predict(images)
+                    for idx, caption in enumerate(captions):
+                        print(f'Caption {idx}')
+                        print(' '.join(caption))
 
             self.scheduler.step()
         training_loss /= cnt
@@ -144,16 +151,26 @@ class Experiment(object):
             for loader_num, data in enumerate(self.__val_loaders):
                 n_batches = len(data)
                 for i, (images, captions) in enumerate(data):
-                    images = images.contiguous().to(self.device)
-                    captions = captions.contiguous().to(self.device)
-                    output = self.__model(images, captions).contiguous().to(self.device)
-                    loss = self.__criterion(output.view(-1, len(self.__vocab)), captions.view(-1).to(self.device))
+
+                    images = images.to(self.device)
+                    captions = captions.to(self.device)
+
+                    output = self.__model(images, captions)
+
+                    loss = self.__criterion(output.transpose(1, 2), captions)
+
                     val_loss += loss * images.size(0)
                     cnt += images.size(0)
 
                     if i % 10 == 0:
                         print('[%d/%d]\t[%d/%d]\t[%d/%d]\tAverage Loss: %.4f'
                               % (epoch, self.__epochs, loader_num, n_loaders, i, n_batches, val_loss / cnt))
+                    if (i - 1) % 100 == 0:
+                        print('Sample Captions:')
+                        captions = self.__model.predict(images)
+                        for idx, caption in enumerate(captions):
+                            print(f'Caption {idx}')
+                            print(' '.join(caption))
 
         val_loss /= cnt
         if not self.__val_losses or val_loss < min(self.__val_losses):
