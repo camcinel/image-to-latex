@@ -113,8 +113,8 @@ class CALSTM(nn.Module):
         self.embed = nn.Embedding(len(vocab), embedding_size)
 
     def forward(self, a, hidden, y):
-        padding = torch.tensor([self.pad_idx] * y.size(0), device=y.get_device()).view(-1, 1)
-        y = torch.cat((padding, y[:, 1:]), dim=1)
+        padding = torch.tensor([self.pad_idx] * y.size(0), dtype=torch.long, device=a.get_device()).view(-1, 1)
+        y = torch.cat((padding, y[:, :-1]), dim=1)
         y = self.embed(y)
         hze = None  # concatenation to be fed into final linear layer
         for i in range(y.size(1)):
