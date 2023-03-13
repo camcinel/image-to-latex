@@ -3,7 +3,10 @@ import torchvision
 import math
 import torch.nn as nn
 
-# The word position encoding is adapted from: https://github.com/kingyiusuen/image-to-latex
+
+
+
+# define the word position encoding layer
 class WordPositionalEncoding(nn.Module):
     def __init__(self, d_model: int, dropout: float = 0.1, max_len: int = 5000) -> None:
         super().__init__()
@@ -28,7 +31,6 @@ class WordPositionalEncoding(nn.Module):
         x = x + self.pe[:, :x.size(1)]
         return self.dropout(x)
     
-# The image position encoding is adapted from: https://github.com/kingyiusuen/image-to-latex    
 class ImagePositionalEncoding(nn.Module):
     """2-D positional encodings for the feature maps produced by the encoder.
 
@@ -93,19 +95,21 @@ class Encoder(nn.Module):
         x = self.resnet(x)
         x = self.bottleneck(x)
         x = self.image_pos_encoder(x)
+        x = x.view(x.size(0), x.size(1), -1).permute(0, 2, 1)
         return x
 
 # define the transformer decoder
 class Decoder(nn.Module):
     def __init__(self, d_model, num_heads, num_layers, num_classes, max_len, dropout=0.1):
         super(Decoder, self).__init__()
-
+        self.d_model = d_model
         self.pos_encoder = WordPositionalEncoding(d_model)
-        decoder_layer = nn.TransformerDecoderLayer(d_model, num_heads, dropout=dropout, batch_first=True)
+        decoder_layer = nn.TransformerDecoderLayer(d_model, num_heads, dim_feedforward=256, dropout=dropout, batch_first=True)
         self.transformer_decoder = nn.TransformerDecoder(decoder_layer, num_layers)
+        self.fc = nn.Linear(d_model, num_classes)
 
         # generate the target mask
-        mask = (torch.triu(torch.ones(max_len, max_len)) == 1).transpose(0, 1)
+        mask = torch.triu(torch.ones(max_len, max_len)) == 1
         mask = mask.float().masked_fill(mask == 0, float("-inf")).masked_fill(mask == 1, float(0.0))
         self.register_buffer("tgt_mask", mask)
 
@@ -115,7 +119,7 @@ class Decoder(nn.Module):
     def forward(self, src, tgt):
         # add the positional encoding to the input
         # src = self.pos_encoder(src)
-        tgt = self.embedding(tgt)
+        tgt = self.embedding(tgt) * math.sqrt(self.d_model)
         tgt = self.pos_encoder(tgt)
 
         Sy = tgt.shape[1]
@@ -123,6 +127,7 @@ class Decoder(nn.Module):
 
         # use the transformer decoder to decode the input
         output = self.transformer_decoder(tgt, src, tgt_mask=tgt_mask)
+        output = self.fc(output)
 
         return output
 
@@ -133,30 +138,22 @@ class MathEquationConverter(nn.Module):
         super(MathEquationConverter, self).__init__()
         self.encoder = Encoder(d_model)
         self.decoder = Decoder(d_model, num_heads, num_layers, num_classes, max_len, dropout=dropout)
-        self.fc = nn.Linear(d_model, num_classes)
         self.max_len = max_len
 
     def forward(self, x, y):
         # pass the input through the encoder
         x = self.encoder(x)
 
-        # reshape the output of the encoder to be suitable for the decoder
-        x = x.view(x.size(0), x.size(1), -1).permute(0, 2, 1)
-
         # pass the output of the encoder through the decoder
         x = self.decoder(x, y)
-        x = self.fc(x)
         return x
     
-    # The early stop method is adapted from: https://github.com/kingyiusuen/image-to-latex
     def predict(self, x):
         # pass the input through the encoder
         x = self.encoder(x)
 
         B = x.shape[0]
         S = self.max_len
-        
-        x = x.view(x.size(0), x.size(1), -1).permute(0, 2, 1)
 
         output_indices = torch.full((B, S), 0).type_as(x).long()
         output_indices[:, 0] = 1
@@ -164,13 +161,10 @@ class MathEquationConverter(nn.Module):
 
         for Sy in range(1, S):
             y = output_indices[:, :Sy]  # (B, Sy)
-            # print(x.shape, y.shape)
-            logits = self.decoder(x, y)  # (B, Sy, num_classes)            
-            logits = self.fc(logits)
+            logits = self.decoder(x, y)  # (B, Sy, num_classes)
             # Select the token with the highest conditional probability
             output = torch.argmax(logits, dim=-1)  # (B, Sy)
             output_indices[:, Sy] = output[:, -1]  # Set the last output token
-
             # Early stopping of prediction loop to speed up prediction
             has_ended |= (output_indices[:, Sy] == 0).type_as(has_ended)
             if torch.all(has_ended):
