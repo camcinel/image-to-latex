@@ -114,6 +114,10 @@ class Experiment(object):
                 images = images.contiguous().to(self.device)
                 captions = captions.contiguous().to(self.device)
                 output = self.__model(images, captions).contiguous().to(self.device)
+                
+                output = output[:,:-1].contiguous().to(self.device)
+                captions = captions[:,1:].contiguous().to(self.device) 
+                
                 loss = self.__criterion(output.view(-1, len(self.__vocab)), captions.view(-1).to(self.device))
                 loss.backward()
                 self.__optimizer.step()
@@ -134,6 +138,10 @@ class Experiment(object):
                     images = images.contiguous().to(self.device)
                     captions = captions.contiguous().to(self.device)
                     output = self.__model(images, captions).contiguous().to(self.device)
+                    
+                    output = output[:,:-1].contiguous().to(self.device)
+                    captions = captions[:,1:].contiguous().to(self.device) 
+                    
                     loss = self.__criterion(output.view(-1, len(self.__vocab)), captions.view(-1).to(self.device))
                     val_loss += loss * images.size(0)
                     cnt += images.size(0)
@@ -159,10 +167,16 @@ class Experiment(object):
                     images = images.contiguous().to(self.device)
                     captions = captions.contiguous().to(self.device)
                     output_loss = self.__best_model(images, captions).contiguous().to(self.device)
+                    
+                    output_loss = output_loss[:,:-1].contiguous().to(self.device)
+                    captions = captions[:,1:].contiguous().to(self.device)
+                    
                     test_loss += self.__criterion(output_loss.view(-1, len(self.__vocab)), captions.view(-1)) * images.size(0)
                     cnt += images.size(0)
 
                     output = self.__best_model.predict(images)
+                    output = output[:,:-1].contiguous().to(self.device)
+                    
                     for j in range(images.size(0)):
                         # TODO: Implement actual captions retrieval
                         actual_cap = remove([self.__vocab.idx2word[x.item()] for x in captions[j]])
@@ -177,6 +191,7 @@ class Experiment(object):
         result_str = "Test Performance: Loss: {}, Bleu1: {}, Bleu4: {}".format(test_loss, _bleu1, _bleu4)
         self.__log(result_str)
         print(f'The actual cap is: {actual_cap} The prediction is:{output_cap}')
+        print(f'teacher forcing preds: {remove(get_caption(torch.argmax(output_loss[-1],dim=-1), self.__vocab, self.__generation_config))}' )
 
         return test_loss, _bleu1, _bleu4
 
