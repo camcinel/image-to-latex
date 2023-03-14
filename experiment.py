@@ -4,6 +4,7 @@ import torch
 import torch.nn as nn
 import torch.optim as optim
 import copy
+import json
 from datetime import datetime
 
 from caption_utils import *
@@ -27,7 +28,7 @@ class Experiment(object):
         self.__name = config_data['experiment_name']
         self.__experiment_dir = os.path.join(ROOT_STATS_DIR, self.__name)
         self.device =  torch.device('cuda' if torch.has_cuda else 'cpu')
-
+        self.config_data = config_data
         # Load Datasets
         self.__vocab, self.__train_loaders, self.__val_loaders, self.__test_loaders = get_datasets(
             config_data)
@@ -35,6 +36,8 @@ class Experiment(object):
         # Setup Experiment
         self.__generation_config = config_data['generation']
         self.__epochs = config_data['experiment']['num_epochs']
+        self.__milestones = config_data["scheduler"]["milestones"]
+        self.__gamma = config_data["scheduler"]["gamma"]
         self.__current_epoch = 0
         self.__training_losses = []
         self.__val_losses = []
@@ -54,7 +57,7 @@ class Experiment(object):
 
         self.__init_model()
 
-        self.scheduler = CosineAnnealingLR(self.__optimizer, T_max=10, eta_min=0)
+        self.scheduler = torch.optim.lr_scheduler.MultiStepLR(self.__optimizer, milestones=self.__milestones, gamma=self.__gamma)
 
         # Load Experiment Data if available
         self.__load_experiment()
@@ -63,6 +66,7 @@ class Experiment(object):
     def __load_experiment(self):
         os.makedirs(ROOT_STATS_DIR, exist_ok=True)
 
+        
         if os.path.exists(self.__experiment_dir):
             self.__training_losses = read_file_in_dir(self.__experiment_dir, 'training_losses.json')
             self.__val_losses = read_file_in_dir(self.__experiment_dir, 'val_losses.json')
@@ -76,6 +80,9 @@ class Experiment(object):
 
         else:
             os.makedirs(self.__experiment_dir)
+            write_to_file_in_dir(self.__experiment_dir, 'config.json', self.config_data)
+            
+
 
     def __init_model(self):
         if torch.cuda.is_available():
@@ -111,14 +118,14 @@ class Experiment(object):
         for data in self.__train_loaders:
             for i, (images, captions) in enumerate(data):
                 self.__optimizer.zero_grad()
-                images = images.contiguous().to(self.device)
+                images = images.contiguous().to(self.device)                             
                 captions = captions.contiguous().to(self.device)
                 output = self.__model(images, captions).contiguous().to(self.device)
                 
                 output = output[:,:-1].contiguous().to(self.device)
-                captions = captions[:,1:].contiguous().to(self.device) 
+                captions = captions[:,1:].contiguous().to(self.device)                
                 
-                loss = self.__criterion(output.view(-1, len(self.__vocab)), captions.view(-1).to(self.device))
+                loss = self.__criterion(output.view(-1, len(self.__vocab)), captions.view(-1))
                 loss.backward()
                 self.__optimizer.step()
                 training_loss += loss * images.size(0)
@@ -169,18 +176,18 @@ class Experiment(object):
                     output_loss = self.__best_model(images, captions).contiguous().to(self.device)
                     
                     output_loss = output_loss[:,:-1].contiguous().to(self.device)
-                    captions = captions[:,1:].contiguous().to(self.device)
                     
+                    captions = captions[:,1:].contiguous().to(self.device) 
+
                     test_loss += self.__criterion(output_loss.view(-1, len(self.__vocab)), captions.view(-1)) * images.size(0)
+                    
                     cnt += images.size(0)
 
                     output = self.__best_model.predict(images)
-                    output = output[:,:-1].contiguous().to(self.device)
-                    
                     for j in range(images.size(0)):
                         # TODO: Implement actual captions retrieval
-                        actual_cap = remove([self.__vocab.idx2word[x.item()] for x in captions[j]])
-                        output_cap = remove(get_caption(output[j], self.__vocab, self.__generation_config))
+                        actual_cap = [self.__vocab.idx2word[x.item()] for x in captions[j]]
+                        output_cap = get_caption(output[j], self.__vocab, self.__generation_config)
                         _bleu1 += bleu1([actual_cap], output_cap)
                         _bleu4 += bleu4([actual_cap], output_cap)
 
@@ -191,7 +198,8 @@ class Experiment(object):
         result_str = "Test Performance: Loss: {}, Bleu1: {}, Bleu4: {}".format(test_loss, _bleu1, _bleu4)
         self.__log(result_str)
         print(f'The actual cap is: {actual_cap} The prediction is:{output_cap}')
-        print(f'teacher forcing preds: {remove(get_caption(torch.argmax(output_loss[-1],dim=-1), self.__vocab, self.__generation_config))}' )
+        print(output_loss.shape)
+        print(f'teacher forcing preds: {get_caption(torch.argmax(output_loss[-1],dim=-1), self.__vocab, self.__generation_config)}' )
 
         return test_loss, _bleu1, _bleu4
 
