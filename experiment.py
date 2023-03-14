@@ -186,8 +186,8 @@ class Experiment(object):
                     output = self.__best_model.predict(images)
                     for j in range(images.size(0)):
                         # TODO: Implement actual captions retrieval
-                        actual_cap = [self.__vocab.idx2word[x.item()] for x in captions[j]]
-                        output_cap = get_caption(output[j], self.__vocab, self.__generation_config)
+                        actual_cap = remove([self.__vocab.idx2word[x.item()] for x in captions[j]])
+                        output_cap = remove(get_caption(output[j], self.__vocab, self.__generation_config))
                         _bleu1 += bleu1([actual_cap], output_cap)
                         _bleu4 += bleu4([actual_cap], output_cap)
 
@@ -199,7 +199,7 @@ class Experiment(object):
         self.__log(result_str)
         print(f'The actual cap is: {actual_cap} The prediction is:{output_cap}')
         print(output_loss.shape)
-        print(f'teacher forcing preds: {get_caption(torch.argmax(output_loss[-1],dim=-1), self.__vocab, self.__generation_config)}' )
+        print(f'teacher forcing preds: {remove(get_caption(torch.argmax(output_loss[-1],dim=-1), self.__vocab, self.__generation_config))}' )
 
         return test_loss, _bleu1, _bleu4
 
