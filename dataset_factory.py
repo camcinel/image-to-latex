@@ -26,6 +26,8 @@ def get_coco_dataloader(imgs_root_dir, meta_data_path, config_data):
     loaders = []
     meta_data = pd.read_pickle(meta_data_path)
     padded_lengths = meta_data['padded_seq_len'].unique()
+    np.random.seed(140)
+    torch.manual_seed(140)
     np.random.shuffle(padded_lengths)
     padded_lengths = padded_lengths[:2]
     for padded_length in padded_lengths:

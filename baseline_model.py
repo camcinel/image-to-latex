@@ -11,7 +11,7 @@ class WordPositionalEncoding(nn.Module):
     def __init__(self, d_model: int, dropout: float = 0.1, max_len: int = 5000) -> None:
         super().__init__()
         self.dropout = nn.Dropout(p=dropout)
-        pe = self.make_pe(d_model, max_len)  # (max_len, 1, d_model)
+        pe = self.make_pe(d_model, max_len)  # (1, max_len, d_model)
         self.register_buffer("pe", pe)
 
     @staticmethod
@@ -22,12 +22,10 @@ class WordPositionalEncoding(nn.Module):
         div_term = torch.exp(torch.arange(0, d_model, 2).float() * (-math.log(10000.0) / d_model))
         pe[:, 0::2] = torch.sin(position * div_term)
         pe[:, 1::2] = torch.cos(position * div_term)
-        pe = pe.unsqueeze(0)
+        pe = pe.unsqueeze(0) # (1, max_len, d_model)
         return pe
     
     def forward(self, x):
-        # add the positional encoding to the input
-        # print(f'wordencode: x:{x.shape}, self.pe[:, :x.size(1)] {self.pe[:, :x.size(1)].shape}')
         x = x + self.pe[:, :x.size(1)]
         return self.dropout(x)
     
@@ -50,15 +48,15 @@ class ImagePositionalEncoding(nn.Module):
     @staticmethod
     def make_pe(d_model: int, max_h: int, max_w: int):
         """Compute positional encoding."""
-        pe_h = WordPositionalEncoding.make_pe(d_model=d_model // 2, max_len=max_h)  # (max_h, 1 d_model // 2)
-        pe_h = pe_h.expand(-1, max_w, -1)  # (d_model // 2, max_h, max_w)
+        pe_h = WordPositionalEncoding.make_pe(d_model=d_model // 2, max_len=max_h)  # (1, max_h, d_model // 2)
+        pe_h = pe_h.permute(2, 1, 0).expand(-1, -1, max_w)  # (d_model // 2, max_h, max_w)
 
-        pe_w = WordPositionalEncoding.make_pe(d_model=d_model // 2, max_len=max_w)  # (max_w, 1, d_model // 2)
-        pe_w = pe_w.expand(-1, max_h, -1)  # (d_model // 2, max_h, max_w)
+        pe_w = WordPositionalEncoding.make_pe(d_model=d_model // 2, max_len=max_w)  # (1, max_w, d_model // 2)
+        pe_w = pe_w.permute(2, 0, 1).expand(-1, max_h, -1)  # (d_model // 2, max_h, max_w)
 
-        pe = torch.cat([pe_h, pe_w], dim=2)  # (d_model, max_h, max_w)
+        pe = torch.cat([pe_h, pe_w], dim=0)  # (d_model, max_h, max_w)
         # print(f'pe:{pe.shape}')
-        return pe.permute(0,2,1)
+        return pe
 
     def forward(self, x):
         """Forward pass.
@@ -80,7 +78,7 @@ class Encoder(nn.Module):
     def __init__(self, d_model=256):
         super(Encoder, self).__init__()
         self.conv1 = nn.Conv2d(1, 64, kernel_size=7, stride=2, padding=3, bias=False)
-        resnet = torchvision.models.resnet18(weights=None)
+        resnet = torchvision.models.resnet18(pretrained=False)
         self.resnet = nn.Sequential(
             resnet.bn1,
             resnet.relu,
