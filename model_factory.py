@@ -12,5 +12,9 @@ def get_model(config_data, vocab):
     if model_type == "baseline":
         embedding_size = config_data['model']['embedding_size']
         model = MathEquationConverter(embedding_size, nhead, layer_num, dim_feedforward, dropout, len(vocab), max_length)
-        
+    
+    elif model_type == "ViT":
+        embedding_size = config_data['model']['embedding_size']
+        model = MathEquationConverter(embedding_size, nhead, layer_num, dim_feedforward, dropout, len(vocab), max_length)        
+    
     return model

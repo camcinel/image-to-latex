@@ -28,7 +28,7 @@
     "nhead": 4,
     "layer_num": 3,
     "dropout": 0.3,
-    "model_type": "baseline"
+    "model_type": "ViT"
   },
   "generation": {
     "max_length": 152

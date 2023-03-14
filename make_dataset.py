@@ -39,12 +39,19 @@ class MyDataset(data.Dataset):
         image = Image.open(os.path.join(self.root, path)).convert('RGBA').getchannel("A")
         image = np.array(image)
         image = torch.tensor(image, dtype=torch.float32)
-        n, m = image.shape
-        a, b = (self.img_size[1] - m) // 2, (self.img_size[0] - n) // 2
-        transform = transforms.Compose([
-            transforms.Pad( (a, b, self.img_size[1]-m-a, self.img_size[0]-n-b), fill=0, padding_mode='constant'),
-        ])
-        image = transform(image).unsqueeze(0)
+        print("before pad: ", image.size())
+        
+        resize = transforms.Compose(
+            [transforms.Resize(self.img_size, interpolation=transforms.InterpolationMode.BILINEAR), transforms.CenterCrop(self.img_size)])
+        
+        # n, m = image.shape
+        # a, b = (self.img_size[1] - m) // 2, (self.img_size[0] - n) // 2
+        # transform = transforms.Compose([
+        #     transforms.Pad( (a, b, self.img_size[1]-m-a, self.img_size[0]-n-b), fill=0, padding_mode='constant'),
+        # ])
+        # image = transform(image).unsqueeze(0)
+        image = resize(image).unsqueeze(0)
+        print("after pad: ", image.size())
         return image, target
 
     def __len__(self):
