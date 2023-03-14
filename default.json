@@ -1,5 +1,5 @@
 {
-  "experiment_name": "default_experiment",
+  "experiment_name": "ResTransformer_experiment",
   "dataset": {
     "train_data_dir": "./dataset5/training_56/df_train.pkl",
     "val_data_dir": "./dataset5/training_56/df_valid.pkl",
@@ -9,22 +9,28 @@
     "img_h": 128,
     "img_w": 1088,
     "batch_size": 64,
-    "num_workers": 10
+    "num_workers": 6
   },
   "experiment": {
-    "num_epochs": 2,
+    "num_epochs": 10,
     "learning_rate": 5e-5
   },
+
+  "scheduler": {
+    "milestones": [10],
+    "gamma": 0.5
+
+  },
+
   "model": {
-    "hidden_size": 512,
-    "embedding_size": 300,
-    "layer_num": 2,
-    "model_type": "baseline",
-    "keep_image": false
+    "embedding_size": 256,
+    "dim_feedforward": 256,
+    "nhead": 4,
+    "layer_num": 3,
+    "dropout": 0.3,
+    "model_type": "baseline"
   },
   "generation": {
-    "max_length": 20,
-    "deterministic": false,
-    "temperature": 0.1
+    "max_length": 152
   }
 }
