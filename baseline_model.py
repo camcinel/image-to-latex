@@ -57,7 +57,8 @@ class ImagePositionalEncoding(nn.Module):
         pe_w = pe_w.expand(-1, max_h, -1)  # (d_model // 2, max_h, max_w)
 
         pe = torch.cat([pe_h, pe_w], dim=2)  # (d_model, max_h, max_w)
-        return pe
+        # print(f'pe:{pe.shape}')
+        return pe.permute(0,2,1)
 
     def forward(self, x):
         """Forward pass.
@@ -68,7 +69,8 @@ class ImagePositionalEncoding(nn.Module):
         Returns:
             (B, d_model, H, W)
         """
-        # print(f'imageencode: x:{x.shape}, self.pe[:, : x.size(2), : x.size(3)] {self.pe[:, : x.size(2), : x.size(3)].shape}')
+        #print(f'imageencode: x:{x.shape}, self.pe[:, : x.size(2), : x.size(3)] {self.pe[:, : x.size(2), : x.size(3)].shape}')
+        #print(self.pe.shape)
         x = x + self.pe[:, : x.size(2), : x.size(3)]
         return x
 
@@ -77,10 +79,9 @@ class ImagePositionalEncoding(nn.Module):
 class Encoder(nn.Module):
     def __init__(self, d_model=256):
         super(Encoder, self).__init__()
-        conv1 = nn.Conv2d(1, 64, kernel_size=7, stride=2, padding=3, bias=False)
-        resnet = torchvision.models.resnet18(pretrained=False)
+        self.conv1 = nn.Conv2d(1, 64, kernel_size=7, stride=2, padding=3, bias=False)
+        resnet = torchvision.models.resnet18(weights=None)
         self.resnet = nn.Sequential(
-            conv1,
             resnet.bn1,
             resnet.relu,
             resnet.maxpool,
@@ -89,27 +90,30 @@ class Encoder(nn.Module):
             resnet.layer3,
         )
         self.bottleneck = nn.Conv2d(256, d_model, 1)
-        self.image_pos_encoder = ImagePositionalEncoding(d_model)
+        #self.image_pos_encoder = ImagePositionalEncoding(d_model)
+        self.image_pos_encoder = ImagePositionalEncoding(64)
 
     def forward(self, x):
+        x = self.conv1(x)
+        x = self.image_pos_encoder(x)
         x = self.resnet(x)
         x = self.bottleneck(x)
-        x = self.image_pos_encoder(x)
+        # x = self.image_pos_encoder(x)
         x = x.view(x.size(0), x.size(1), -1).permute(0, 2, 1)
         return x
 
 # define the transformer decoder
 class Decoder(nn.Module):
-    def __init__(self, d_model, num_heads, num_layers, num_classes, max_len, dropout=0.1):
+    def __init__(self, d_model, num_heads, num_layers, dim_forward, dropout, num_classes, max_len):
         super(Decoder, self).__init__()
         self.d_model = d_model
         self.pos_encoder = WordPositionalEncoding(d_model)
-        decoder_layer = nn.TransformerDecoderLayer(d_model, num_heads, dim_feedforward=256, dropout=dropout, batch_first=True)
+        decoder_layer = nn.TransformerDecoderLayer(d_model, num_heads, dim_feedforward=dim_forward, dropout=dropout, batch_first=True)
         self.transformer_decoder = nn.TransformerDecoder(decoder_layer, num_layers)
         self.fc = nn.Linear(d_model, num_classes)
 
         # generate the target mask
-        mask = torch.triu(torch.ones(max_len, max_len)) == 1
+        mask = torch.tril(torch.ones(max_len, max_len)) == 1
         mask = mask.float().masked_fill(mask == 0, float("-inf")).masked_fill(mask == 1, float(0.0))
         self.register_buffer("tgt_mask", mask)
 
@@ -126,7 +130,7 @@ class Decoder(nn.Module):
         tgt_mask = self.tgt_mask[:Sy, :Sy].type_as(src)
 
         # use the transformer decoder to decode the input
-        output = self.transformer_decoder(tgt, src, tgt_mask=tgt_mask)
+        output = self.transformer_decoder(tgt, src, tgt_mask)
         output = self.fc(output)
 
         return output
@@ -134,10 +138,10 @@ class Decoder(nn.Module):
 
 
 class MathEquationConverter(nn.Module):
-    def __init__(self, d_model, num_heads, num_layers, num_classes, max_len, dropout=0.1):
+    def __init__(self, d_model, num_heads, num_layers, dim_forward, dropout, num_classes, max_len):
         super(MathEquationConverter, self).__init__()
         self.encoder = Encoder(d_model)
-        self.decoder = Decoder(d_model, num_heads, num_layers, num_classes, max_len, dropout=dropout)
+        self.decoder = Decoder(d_model, num_heads, num_layers, dim_forward, dropout, num_classes, max_len)
         self.max_len = max_len
 
     def forward(self, x, y):
