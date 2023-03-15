@@ -76,7 +76,7 @@ class ImagePositionalEncoding(nn.Module):
 
 
 class PatchEmbedding(nn.Module):
-    def __init__(self, in_channels: int = 3, patch_size: int = 16, emb_size: int = 768, img_size = 224):
+    def __init__(self, in_channels, patch_size, emb_size, img_size):
         self.patch_size = patch_size
         super().__init__()
         self.projection = nn.Sequential(
@@ -86,7 +86,7 @@ class PatchEmbedding(nn.Module):
         )
                 
         self.cls_token = nn.Parameter(torch.randn(1,1, emb_size))
-        self.positions = nn.Parameter(torch.randn((img_size // patch_size) **2 + 1, emb_size))
+        self.positions = nn.Parameter(torch.randn((img_size[0] * img_size[1] // (patch_size**2)) + 1, emb_size))
 
     def forward(self, x: Tensor) -> Tensor:
         b, _, _, _ = x.shape
@@ -100,13 +100,13 @@ class PatchEmbedding(nn.Module):
     
 
 class MultiHeadAttention(nn.Module):
-    def __init__(self, emb_size: int = 768, num_heads: int = 8, dropout: float = 0):
+    def __init__(self, emb_size, num_heads, att_dropout):
         super().__init__()
         self.emb_size = emb_size
         self.num_heads = num_heads
         # fuse the queries, keys and values in one matrix
         self.qkv = nn.Linear(emb_size, emb_size * 3)
-        self.att_drop = nn.Dropout(dropout)
+        self.att_drop = nn.Dropout(att_dropout)
         self.projection = nn.Linear(emb_size, emb_size)
         
     def forward(self, x : Tensor, mask: Tensor = None) -> Tensor:
@@ -140,52 +140,58 @@ class ResidualAdd(nn.Module):
         return x
     
 class FeedForwardBlock(nn.Sequential):
-    def __init__(self, emb_size: int, expansion: int = 4, drop_p: float = 0.):
+    def __init__(self, emb_size, forward_expansion, forward_drop_p):
         super().__init__(
-            nn.Linear(emb_size, expansion * emb_size),
+            nn.Linear(emb_size, forward_expansion * emb_size),
             nn.GELU(),
-            nn.Dropout(drop_p),
-            nn.Linear(expansion * emb_size, emb_size),
+            nn.Dropout(forward_drop_p),
+            nn.Linear(forward_expansion * emb_size, emb_size),
         )
 
 class TransformerEncoderBlock(nn.Sequential):
     def __init__(self,
-                 emb_size: int = 768,
-                 drop_p: float = 0.,
-                 forward_expansion: int = 4,
-                 forward_drop_p: float = 0.,
-                 ** kwargs):
+                 emb_size,
+                 drop_p,
+                 forward_expansion,
+                 forward_drop_p,
+                 num_heads,
+                 att_dropout
+                ):
         super().__init__(
             ResidualAdd(nn.Sequential(
                 nn.LayerNorm(emb_size),
-                MultiHeadAttention(emb_size, **kwargs),
+                MultiHeadAttention(emb_size, num_heads, att_dropout),
                 nn.Dropout(drop_p)
             )),
             ResidualAdd(nn.Sequential(
                 nn.LayerNorm(emb_size),
-                FeedForwardBlock(
-                    emb_size, expansion=forward_expansion, drop_p=forward_drop_p),
+                FeedForwardBlock(emb_size, forward_expansion, forward_drop_p),
                 nn.Dropout(drop_p)
             )
             ))
         
 
 class TransformerEncoder(nn.Sequential):
-    def __init__(self, depth: int = 12, **kwargs):
-        super().__init__(*[TransformerEncoderBlock(**kwargs) for _ in range(depth)])
+    def __init__(self, depth, emb_size, drop_p, forward_expansion, forward_drop_p, num_heads, att_dropout):
+        super().__init__(*[TransformerEncoderBlock(emb_size, drop_p, forward_expansion, forward_drop_p, num_heads, att_dropout) for _ in range(depth)])
 
 class ViT(nn.Sequential):
     def __init__(self,     
-                in_channels: int = 3,
+                in_channels: int = 1,
                 patch_size: int = 16,
-                emb_size: int = 768,
-                img_size: int = 224,
-                depth: int = 2,
-                **kwargs):
-        
+                emb_size: int = 256,
+                img_size: tuple = (128,1088),
+                depth: int = 12,
+                drop_p: float = 0,
+                forward_expansion: int = 4,
+                forward_drop_p: float = 0,
+                num_heads: int = 8,
+                att_dropout: float = 0
+                ):
+
         super().__init__(
             PatchEmbedding(in_channels, patch_size, emb_size, img_size),
-            TransformerEncoder(depth, emb_size=emb_size, **kwargs),
+            TransformerEncoder(depth, emb_size, drop_p, forward_expansion, forward_drop_p, num_heads, att_dropout),
         )
 
 # define the encoder using a ResNet-18 backbone
@@ -253,8 +259,8 @@ class Decoder(nn.Module):
 class MathEquationConverter(nn.Module):
     def __init__(self, d_model, num_heads, num_layers, dim_forward, dropout, num_classes, max_len):
         super(MathEquationConverter, self).__init__()
-        self.encoder = Encoder(d_model)
-        self.encoder = ViT('''pass image''')
+        # self.encoder = Encoder(d_model)
+        self.encoder = ViT()
         self.decoder = Decoder(d_model, num_heads, num_layers, dim_forward, dropout, num_classes, max_len)
         self.max_len = max_len
 

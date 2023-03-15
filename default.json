@@ -12,8 +12,8 @@
     "num_workers": 6
   },
   "experiment": {
-    "num_epochs": 10,
-    "learning_rate": 5e-5
+    "num_epochs": 100,
+    "learning_rate": 5e-4
   },
 
   "scheduler": {
