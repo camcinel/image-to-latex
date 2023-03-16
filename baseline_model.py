@@ -78,9 +78,11 @@ class ImagePositionalEncoding(nn.Module):
 class Encoder(nn.Module):
     def __init__(self, d_model=256):
         super(Encoder, self).__init__()
-        self.conv1 = nn.Conv2d(1, 64, kernel_size=7, stride=2, padding=3, bias=False)
+        #self.conv1 = nn.Conv2d(1, 64, kernel_size=7, stride=2, padding=3, bias=False)
+        conv1 = nn.Conv2d(1, 64, kernel_size=7, stride=2, padding=3, bias=False)
         resnet = torchvision.models.resnet18(pretrained=False)
         self.resnet = nn.Sequential(
+            conv1,
             resnet.bn1,
             resnet.relu,
             resnet.maxpool,
@@ -88,16 +90,16 @@ class Encoder(nn.Module):
             resnet.layer2,
             resnet.layer3,
         )
-        self.bottleneck = nn.Conv2d(256, d_model, 1)
-        #self.image_pos_encoder = ImagePositionalEncoding(d_model)
-        self.image_pos_encoder = ImagePositionalEncoding(64)
+        self.bottleneck = nn.Conv2d(256, d_model//2, 1)
+        self.image_pos_encoder = ImagePositionalEncoding(d_model)
+        #self.image_pos_encoder = ImagePositionalEncoding(64)
 
     def forward(self, x):
-        x = self.conv1(x)
-        x = self.image_pos_encoder(x)
+        #x = self.conv1(x)
+        #x = self.image_pos_encoder(x)
         x = self.resnet(x)
         x = self.bottleneck(x)
-        # x = self.image_pos_encoder(x)
+        x = self.image_pos_encoder( torch.cat( (x, x), dim=1 ) )
         x = x.view(x.size(0), x.size(1), -1).permute(0, 2, 1)
         return x
 
