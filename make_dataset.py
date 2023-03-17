@@ -25,6 +25,11 @@ class MyDataset(data.Dataset):
         self.meta.index = range(self.meta.shape[0])
         self.img_size = img_size
 
+        self.normalize = transforms.Compose([
+                                             transforms.ToTensor(),
+                                             transforms.Normalize(mean=5.96457, std=38.54074)
+                                            ])
+        
 
     def __getitem__(self, index):
         """Returns one data pair (image and caption)."""
@@ -37,13 +42,11 @@ class MyDataset(data.Dataset):
 
         # TODO: add normalization, change the padding for centering the image.
         image = Image.open(os.path.join(self.root, path)).convert('RGBA').getchannel("A")
-        image = np.array(image)
-        image = torch.tensor(image, dtype=torch.float32)
-        
-        # resize = transforms.Compose(
-        #     [transforms.Resize(self.img_size, interpolation=transforms.InterpolationMode.BILINEAR), transforms.CenterCrop(self.img_size)])
-        # image = resize(image).unsqueeze(0)
-
+        # image = np.array(image)
+        # image = torch.tensor(image, dtype=torch.float32)
+        # print("before norm: ", image.shape)
+        image = self.normalize(np.array(image)).squeeze(0)
+        # print("after norm: ", image.shape)
         n, m = image.shape
         a, b = (self.img_size[1] - m) // 2, (self.img_size[0] - n) // 2
         transform = transforms.Compose([

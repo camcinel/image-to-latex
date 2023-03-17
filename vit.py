@@ -178,15 +178,15 @@ class TransformerEncoder(nn.Sequential):
 class ViT(nn.Sequential):
     def __init__(self,     
                 in_channels: int = 1,
-                patch_size: int = 16,
-                emb_size: int = 256,
+                patch_size: int = 32,
+                emb_size: int = 1024,
                 img_size: tuple = (128,1088),
                 depth: int = 12,
-                drop_p: float = 0,
+                drop_p: float = 0.3,
                 forward_expansion: int = 4,
-                forward_drop_p: float = 0,
+                forward_drop_p: float = 0.3,
                 num_heads: int = 8,
-                att_dropout: float = 0
+                att_dropout: float = 0.3
                 ):
 
         super().__init__(
@@ -194,32 +194,12 @@ class ViT(nn.Sequential):
             TransformerEncoder(depth, emb_size, drop_p, forward_expansion, forward_drop_p, num_heads, att_dropout),
         )
 
-# define the encoder using a ResNet-18 backbone
-class Encoder(nn.Module):
-    def __init__(self, d_model=256):
-        super(Encoder, self).__init__()
-        self.conv1 = nn.Conv2d(1, 64, kernel_size=7, stride=2, padding=3, bias=False)
-        resnet = torchvision.models.resnet18(pretrained=False)
-        self.resnet = nn.Sequential(
-            resnet.bn1,
-            resnet.relu,
-            resnet.maxpool,
-            resnet.layer1,
-            resnet.layer2,
-            resnet.layer3,
-        )
-        self.bottleneck = nn.Conv2d(256, d_model, 1)
-        #self.image_pos_encoder = ImagePositionalEncoding(d_model)
-        self.image_pos_encoder = ImagePositionalEncoding(64)
 
-    def forward(self, x):
-        x = self.conv1(x)
-        x = self.image_pos_encoder(x)
-        x = self.resnet(x)
-        x = self.bottleneck(x)
-        # x = self.image_pos_encoder(x)
-        x = x.view(x.size(0), x.size(1), -1).permute(0, 2, 1)
-        return x
+# class Encoder(nn.Module):
+#     def __init__(self):
+
+
+
 
 # define the transformer decoder
 class Decoder(nn.Module):
@@ -259,7 +239,6 @@ class Decoder(nn.Module):
 class MathEquationConverter(nn.Module):
     def __init__(self, d_model, num_heads, num_layers, dim_forward, dropout, num_classes, max_len):
         super(MathEquationConverter, self).__init__()
-        # self.encoder = Encoder(d_model)
         self.encoder = ViT()
         self.decoder = Decoder(d_model, num_heads, num_layers, dim_forward, dropout, num_classes, max_len)
         self.max_len = max_len
@@ -267,7 +246,7 @@ class MathEquationConverter(nn.Module):
     def forward(self, x, y):
         # pass the input through the encoder
         x = self.encoder(x)
-
+        print("Encoder output: ", x.size())
         # pass the output of the encoder through the decoder
         x = self.decoder(x, y)
         return x

@@ -14,6 +14,7 @@ from file_utils import *
 from model_factory import get_model
 from torch.optim.lr_scheduler import CosineAnnealingLR
 
+from tqdm import tqdm
 
 # Class to encapsulate a neural experiment.
 # The boilerplate code to setup the experiment, log stats, checkpoints and plotting have been provided to you.
@@ -93,26 +94,43 @@ class Experiment(object):
     def run(self):
         start_epoch = self.__current_epoch
         cur_patience = 0
+        best_loss = np.inf
+
         for epoch in range(start_epoch, self.__epochs):  # loop over the dataset multiple times
             start_time = datetime.now()
             self.__current_epoch = epoch
             train_loss = self.__train()
             val_loss = self.__val()
-            if self.__val_losses and val_loss > self.__val_losses[-1]:
-                cur_patience += 1
-            else:
-                cur_patience = 0
+            
+            # if self.__val_losses and val_loss > self.__val_losses[-1]:
+            #     cur_patience += 1
+            # else:
+            #     cur_patience = 0
+            
             self.__record_stats(train_loss, val_loss)
             self.__log_epoch_stats(start_time)
             self.__save_model()
-            if cur_patience >= self.__patience:
-                print(f'Early Stopped at: {epoch}!')
+
+            if val_loss < best_loss:
+                best_loss = val_loss
+                self.__best_model = self.__model
+                cur_patience = 0
+            else:
+                cur_patience += 1
+
+            if cur_patience == self.__patience:
+                self.__model = self.__best_model
+                print(f'Early stopping after {epoch} epochs')
                 break
+
+            # if cur_patience >= self.__patience:
+            #     print(f'Early Stopped at: {epoch}!')
+            #     break
 
     # Perform one training iteration on the whole dataset and return loss value
     def __train(self):
         self.__model.train()
-        training_loss = cnt = 0
+        training_loss = cnt = 0        
 
         # Iterate over the data, implement the training function
         for data in self.__train_loaders:
@@ -186,8 +204,10 @@ class Experiment(object):
                     output = self.__best_model.predict(images)
                     for j in range(images.size(0)):
                         # TODO: Implement actual captions retrieval
-                        actual_cap = [self.__vocab.idx2word[x.item()] for x in captions[j]]
-                        output_cap = get_caption(output[j], self.__vocab, self.__generation_config)
+                        # actual_cap = [self.__vocab.idx2word[x.item()] for x in captions[j]]
+                        # output_cap = get_caption(output[j], self.__vocab, self.__generation_config)
+                        actual_cap = remove([self.__vocab.idx2word[x.item()] for x in captions[j]])
+                        output_cap = remove(get_caption(output[j], self.__vocab, self.__generation_config))
                         _bleu1 += bleu1([actual_cap], output_cap)
                         _bleu4 += bleu4([actual_cap], output_cap)
 
@@ -199,7 +219,8 @@ class Experiment(object):
         self.__log(result_str)
         print(f'The actual cap is: {actual_cap} The prediction is:{output_cap}')
         print(output_loss.shape)
-        print(f'teacher forcing preds: {get_caption(torch.argmax(output_loss[-1],dim=-1), self.__vocab, self.__generation_config)}' )
+        # print(f'teacher forcing preds: {get_caption(torch.argmax(output_loss[-1],dim=-1), self.__vocab, self.__generation_config)}' )
+        print(f'teacher forcing preds: {remove(get_caption(torch.argmax(output_loss[-1],dim=-1), self.__vocab, self.__generation_config))}' )
 
         return test_loss, _bleu1, _bleu4
 
@@ -250,3 +271,6 @@ class Experiment(object):
         plt.legend(loc='best')
         plt.title(self.__name + " Stats Plot")
         plt.savefig(os.path.join(self.__experiment_dir, "stat_plot.png"))
+        plt.show(block=False)
+        plt.pause(3)
+        plt.close()        

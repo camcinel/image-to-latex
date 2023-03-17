@@ -1,5 +1,5 @@
 {
-  "experiment_name": "ResTransformer_experiment",
+  "experiment_name": "ViT_experiment",
   "dataset": {
     "train_data_dir": "./dataset5/training_56/df_train.pkl",
     "val_data_dir": "./dataset5/training_56/df_valid.pkl",
@@ -12,7 +12,8 @@
     "num_workers": 6
   },
   "experiment": {
-    "num_epochs": 100,
+    "num_epochs": 50,
+    "patience": 5,
     "learning_rate": 5e-4
   },
 
@@ -23,10 +24,10 @@
   },
 
   "model": {
-    "embedding_size": 256,
+    "embedding_size": 512,
     "dim_feedforward": 256,
-    "nhead": 4,
-    "layer_num": 3,
+    "nhead": 8,
+    "layer_num": 8,
     "dropout": 0.3,
     "model_type": "ViT"
   },
