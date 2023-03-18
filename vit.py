@@ -5,6 +5,7 @@ from torch import nn, Tensor
 from einops.layers.torch import Rearrange, Reduce
 from einops import rearrange, reduce, repeat
 import torch.nn.functional as F
+import torchvision.models as models
 
 
 
@@ -76,17 +77,17 @@ class ImagePositionalEncoding(nn.Module):
 
 
 class PatchEmbedding(nn.Module):
-    def __init__(self, in_channels, patch_size, emb_size, img_size):
+    def __init__(self, patch_size, emb_size, img_size):
         self.patch_size = patch_size
         super().__init__()
         self.projection = nn.Sequential(
             # using a conv layer instead of a linear one -> performance gains
-            nn.Conv2d(in_channels, emb_size, kernel_size=patch_size, stride=patch_size),
-            Rearrange('b e (h) (w) -> b (h w) e'),
+            nn.Conv2d(img_size[0], emb_size, kernel_size=patch_size, stride=patch_size),
+            Rearrange('b e (h) (w) -> b (h w) e')
         )
                 
         self.cls_token = nn.Parameter(torch.randn(1,1, emb_size))
-        self.positions = nn.Parameter(torch.randn((img_size[0] * img_size[1] // (patch_size**2)) + 1, emb_size))
+        self.positions = nn.Parameter(torch.randn((img_size[1] * img_size[2] // (patch_size**2)) + 1, emb_size))
 
     def forward(self, x: Tensor) -> Tensor:
         b, _, _, _ = x.shape
@@ -153,51 +154,72 @@ class TransformerEncoderBlock(nn.Sequential):
                  emb_size,
                  drop_p,
                  forward_expansion,
-                 forward_drop_p,
                  num_heads,
-                 att_dropout
                 ):
         super().__init__(
             ResidualAdd(nn.Sequential(
                 nn.LayerNorm(emb_size),
-                MultiHeadAttention(emb_size, num_heads, att_dropout),
+                MultiHeadAttention(emb_size, num_heads, drop_p),
                 nn.Dropout(drop_p)
             )),
             ResidualAdd(nn.Sequential(
                 nn.LayerNorm(emb_size),
-                FeedForwardBlock(emb_size, forward_expansion, forward_drop_p),
+                FeedForwardBlock(emb_size, forward_expansion, drop_p),
                 nn.Dropout(drop_p)
             )
             ))
         
 
-class TransformerEncoder(nn.Sequential):
-    def __init__(self, depth, emb_size, drop_p, forward_expansion, forward_drop_p, num_heads, att_dropout):
-        super().__init__(*[TransformerEncoderBlock(emb_size, drop_p, forward_expansion, forward_drop_p, num_heads, att_dropout) for _ in range(depth)])
+class Transformer_Encoder(nn.Sequential):
+    def __init__(self, depth, emb_size, drop_p, forward_expansion, num_heads):
+        super().__init__(*[TransformerEncoderBlock(emb_size, drop_p, forward_expansion, num_heads) for _ in range(depth)])
 
 class ViT(nn.Sequential):
-    def __init__(self,     
-                in_channels: int = 1,
-                patch_size: int = 32,
-                emb_size: int = 1024,
-                img_size: tuple = (128,1088),
-                depth: int = 12,
-                drop_p: float = 0.3,
-                forward_expansion: int = 4,
-                forward_drop_p: float = 0.3,
-                num_heads: int = 8,
-                att_dropout: float = 0.3
-                ):
+    def __init__(self, emb_size, num_heads, num_layers, dim_forward, dropout, patch_size, **kwargs):
 
         super().__init__(
-            PatchEmbedding(in_channels, patch_size, emb_size, img_size),
-            TransformerEncoder(depth, emb_size, drop_p, forward_expansion, forward_drop_p, num_heads, att_dropout),
+            PatchEmbedding(patch_size, emb_size, img_size=(1,256,1152)),
+            Transformer_Encoder(num_layers, emb_size, dropout, dim_forward, num_heads)
         )
 
+class VisionConvolutions(nn.Module):
+    def __init__(self):
+        super().__init__()
+        resnet = models.resnet18(weights=None)
+        conv1 = nn.Conv2d(1, 64, kernel_size=7, stride=2, padding=3, bias=False)
+        self.resnet = nn.Sequential(
+            conv1,
+            resnet.bn1,
+            resnet.relu,
+            resnet.maxpool,
+            resnet.layer1,
+            resnet.layer2         # (128, 32, 144)
+            # resnet.layer3,      # (256,8,68)
+        )
+        # self.bottleneck = nn.Conv2d(256, d_model//2, 1)
 
-# class Encoder(nn.Module):
-#     def __init__(self):
+    def forward(self, x):
+        # x = self.resnet(x)
+        return self.resnet(x)
 
+
+class Encoder(nn.Module):
+    def __init__(self, d_model: int, num_heads: int, num_layers: int, dim_feedforward: int, dropout: float, patch_size: int, activation_fn: str):
+        super(Encoder, self).__init__()
+        # self.d_model = d_model
+        # self.vision_convolutions = VisionConvolutions()
+        # self.patch_emb = PatchEmbedding(patch_size, emb_size, img_size=(128, 32, 144))
+        encoder_layer = nn.TransformerEncoderLayer(d_model, num_heads, dim_feedforward, dropout, activation_fn, batch_first=True)
+        # self.transformer_encoder = nn.TransformerEncoder(encoder_layer, num_layers)
+
+        self.enc = nn.Sequential(VisionConvolutions(),
+                                PatchEmbedding(patch_size, d_model, img_size=(128, 32, 144)),
+                                nn.TransformerEncoder(encoder_layer, num_layers)
+                                )
+    
+    def forward(self, x):
+        # print(x)
+        return self.enc(x)
 
 
 
@@ -237,16 +259,18 @@ class Decoder(nn.Module):
 
 
 class MathEquationConverter(nn.Module):
-    def __init__(self, d_model, num_heads, num_layers, dim_forward, dropout, num_classes, max_len):
+    def __init__(self, config_encoder, config_decoder, num_classes, max_len):
+        # print(config_decoder)
         super(MathEquationConverter, self).__init__()
-        self.encoder = ViT()
-        self.decoder = Decoder(d_model, num_heads, num_layers, dim_forward, dropout, num_classes, max_len)
+        self.encoder = ViT(*(config_encoder.values()))
+        self.encoder = Encoder(*(config_encoder.values()))
+        self.decoder = Decoder(*(config_decoder.values()), num_classes, max_len)
         self.max_len = max_len
 
     def forward(self, x, y):
         # pass the input through the encoder
         x = self.encoder(x)
-        print("Encoder output: ", x.size())
+        # print("Encoder output: ", x.size())
         # pass the output of the encoder through the decoder
         x = self.decoder(x, y)
         return x

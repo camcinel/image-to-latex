@@ -1,14 +1,15 @@
 {
   "experiment_name": "ViT_experiment",
+  "model_type": "ViT",
   "dataset": {
     "train_data_dir": "./dataset5/training_56/df_train.pkl",
     "val_data_dir": "./dataset5/training_56/df_valid.pkl",
     "test_data_dir": "./dataset5/training_56/df_test.pkl",
     "images_root_dir": "./dataset5/formula_images/",
     "vocab_dir": "./dataset5/step2/",
-    "img_h": 128,
-    "img_w": 1088,
-    "batch_size": 64,
+    "img_h": 256,
+    "img_w": 1152,
+    "batch_size": 32,
     "num_workers": 6
   },
   "experiment": {
@@ -23,14 +24,24 @@
 
   },
 
-  "model": {
-    "embedding_size": 512,
-    "dim_feedforward": 256,
-    "nhead": 8,
-    "layer_num": 8,
+  "encoder": {
+    "d_model": 256,
+    "num_heads": 8,
+    "num_layers": 12,
+    "dim_feedforward": 4,
     "dropout": 0.3,
-    "model_type": "ViT"
+    "patch_size": 8,
+    "activation_fn": "gelu"
   },
+
+  "decoder": {
+    "d_model": 256,
+    "num_heads": 4,
+    "num_layers": 3,
+    "dim_forward": 256,
+    "dropout": 0.3
+  },
+
   "generation": {
     "max_length": 152
   }
