@@ -2,6 +2,7 @@ import torch
 import torchvision.transforms as transforms
 import torch.utils.data as data
 import os
+import cv2
 import numpy as np
 from PIL import Image
 import pandas as pd
@@ -43,14 +44,15 @@ class MyDataset(data.Dataset):
         # Random Resize
         max_h = self.img_size[0]
         max_w = self.img_size[1]
-        max_scale = min(max_h / n, max_w / m)
+        max_scale = min(max_h / n, max_w / m, 1.4)
 
-        ratio = np.random.uniform(0.6, max_scale)
+        ratio = np.random.uniform(0.8, max_scale)
         n, m = int(n*ratio), int(m*ratio)
 
         image = image.unsqueeze(0)
 
-        a, b = np.random.randint(0, max_w-m+1), np.random.randint(0, max_h-n+1)
+        #a, b = np.random.randint(0, max_w-m+1), np.random.randint(0, max_h-n+1)
+        a, b = (max_w-m) // 2, (max_h-n) // 2
         transform = transforms.Compose([
             transforms.Resize( (n, m) ),
             transforms.Pad( (a, b, max_w-m-a, max_h-n-b), fill=0, padding_mode='constant'),
