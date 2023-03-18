@@ -35,16 +35,28 @@ class MyDataset(data.Dataset):
         # add the start token.
         target = torch.tensor([1] + target, dtype=torch.long)
 
-        # TODO: add normalization, change the padding for centering the image.
         image = Image.open(os.path.join(self.root, path)).convert('RGBA').getchannel("A")
-        image = np.array(image)
+        image = np.array(image) / 255
         image = torch.tensor(image, dtype=torch.float32)
         n, m = image.shape
-        a, b = (self.img_size[1] - m) // 2, (self.img_size[0] - n) // 2
+
+        # Random Resize
+        max_h = self.img_size[0]
+        max_w = self.img_size[1]
+        max_scale = min(max_h / n, max_w / m)
+
+        ratio = np.random.uniform(0.6, max_scale)
+        n, m = int(n*ratio), int(m*ratio)
+
+        image = image.unsqueeze(0)
+
+        a, b = np.random.randint(0, max_w-m+1), np.random.randint(0, max_h-n+1)
         transform = transforms.Compose([
-            transforms.Pad( (a, b, self.img_size[1]-m-a, self.img_size[0]-n-b), fill=0, padding_mode='constant'),
+            transforms.Resize( (n, m) ),
+            transforms.Pad( (a, b, max_w-m-a, max_h-n-b), fill=0, padding_mode='constant'),
         ])
-        image = transform(image).unsqueeze(0)
+        image = transform(image)
+        
         return image, target
 
     def __len__(self):
