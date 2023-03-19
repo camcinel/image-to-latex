@@ -1,5 +1,5 @@
 {
-  "experiment_name": "ResTransformer_experiment",
+  "experiment_name": "ResTransformer_experiment_double_512,2048_all_data_rand_small",
   "dataset": {
     "train_data_dir": "./dataset5/training_56/df_train.pkl",
     "val_data_dir": "./dataset5/training_56/df_valid.pkl",
@@ -9,11 +9,11 @@
     "img_h": 128,
     "img_w": 1088,
     "batch_size": 64,
-    "num_workers": 6
+    "num_workers": 10
   },
   "experiment": {
-    "num_epochs": 10,
-    "learning_rate": 5e-5
+    "num_epochs": 50,
+    "learning_rate": 2e-5
   },
 
   "scheduler": {
@@ -23,8 +23,8 @@
   },
 
   "model": {
-    "embedding_size": 256,
-    "dim_feedforward": 256,
+    "embedding_size": 512,
+    "dim_feedforward": 2048,
     "nhead": 4,
     "layer_num": 3,
     "dropout": 0.3,
