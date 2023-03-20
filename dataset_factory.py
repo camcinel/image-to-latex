@@ -36,11 +36,10 @@ def get_coco_dataloader(imgs_root_dir, meta_data_path, config_data):
                             meta_data=data,
                             img_size=(config_data['dataset']['img_h'], config_data['dataset']['img_w'])
                             )
-        #print(len(dataset))
+    
         loaders.append( DataLoader(dataset=dataset,
                         batch_size=config_data['dataset']['batch_size'],
                         shuffle=True,
                         num_workers=config_data['dataset']['num_workers'],
-                        # collate_fn=collate_fn,
                         pin_memory=True) )
     return loaders

@@ -9,11 +9,11 @@ def get_model(config_data, vocab):
     # dim_feedforward = config_data["model"]["dim_feedforward"]
     max_length = config_data["generation"]["max_length"]
     
-    # if model_type == "baseline":
-    #     embedding_size = config_data['model']['embedding_size']
-    #     model = MathEquationConverter(embedding_size, nhead, layer_num, dim_feedforward, dropout, len(vocab), max_length)
+    if model_type == "baseline":
+        # embedding_size = config_data['model']['embedding_size']
+        model = MathEquationConverter(config_data["encoder"], config_data["decoder"], len(vocab), max_length)
     
-    if model_type == "ViT":
+    elif model_type == "ViT":
         # print(config_data["encoder"])
         model = MathEquationConverter(config_data['encoder'], config_data['decoder'], len(vocab), max_length)        
     

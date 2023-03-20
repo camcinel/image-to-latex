@@ -6,7 +6,58 @@ from einops.layers.torch import Rearrange, Reduce
 from einops import rearrange, reduce, repeat
 import torch.nn.functional as F
 import torchvision.models as models
+# torchvision.models.vision_transformer.VisionTransformer
 
+
+class ImagePositionalEncoding(nn.Module):
+    """
+    Module for adding position embeddings to a sequence of image patches.
+    """
+    def __init__(self, num_patches, embed_dim, dropout=0.1, max_len=1200):
+        super().__init__()
+        # self.patch_size = patch_size
+        self.embed_dim = embed_dim
+        self.dropout = nn.Dropout(p=dropout)
+        
+        # Create learnable parameters for the position embeddings
+        # num_patches = (224 // patch_size) ** 2
+        # self.position_embeddings = nn.Parameter(self.make_pe(embed_dim, num_patches + 1, max_len))
+        self.position_embeddings = self.make_pe(embed_dim, num_patches + 1, max_len)
+        
+    @staticmethod
+    def make_pe(d_model: int, seq_len: int, max_len: int):
+        """Compute positional encoding."""
+        pe = torch.zeros(max_len, d_model)
+        position = torch.arange(0, max_len, dtype=torch.float).unsqueeze(1)
+        div_term = torch.exp(torch.arange(0, d_model, 2).float() * (-math.log(10000.0) / d_model))
+        print(div_term[:d_model].size())
+        pe[:, 0::2] = torch.sin(position * div_term[:d_model])
+        pe[:, 1::2] = torch.cos(position * div_term[:d_model])
+        return pe
+    
+    def forward(self, x):
+        """
+        Applies position embeddings to a batch of image patches.
+
+        Args:
+            x (tensor): Input tensor of shape (batch_size, num_patches, embed_dim).
+        
+        Returns:
+            tensor: Output tensor with position embeddings added, of shape (batch_size, num_patches + 1, embed_dim).
+        """
+        batch_size, num_patches, embed_dim = x.shape
+        
+        # Add the CLS token at the beginning of the sequence
+        cls_token = nn.Parameter(torch.randn(1, 1, embed_dim))
+        cls_token = cls_token.expand(batch_size, -1, -1).to("cuda")
+        x = torch.cat([cls_token, x], dim=1)
+        
+        # Add the position embeddings to each patch and the CLS token
+        position_embeddings = self.position_embeddings[:num_patches + 1].unsqueeze(0)
+        position_embeddings = position_embeddings.expand(batch_size, -1, -1).to("cuda")
+        x = x + position_embeddings
+        
+        return self.dropout(x)
 
 
 # define the word position encoding layer
@@ -32,71 +83,76 @@ class WordPositionalEncoding(nn.Module):
         x = x + self.pe[:, :x.size(1)]
         return self.dropout(x)
     
-class ImagePositionalEncoding(nn.Module):
-    """2-D positional encodings for the feature maps produced by the encoder.
+# class ImagePositionalEncoding(nn.Module):
+#     """2-D positional encodings for the feature maps produced by the encoder.
+#     Following https://arxiv.org/abs/2103.06450 by Sumeet Singh.
+#     Reference:
+#     https://github.com/full-stack-deep-learning/fsdl-text-recognizer-2021-labs/blob/main/lab9/text_recognizer/models/transformer_util.py
+#     """
 
-    Following https://arxiv.org/abs/2103.06450 by Sumeet Singh.
+#     def __init__(self, d_model: int, max_h: int = 1200, max_w: int = 1200) -> None:
+#         super().__init__()
+#         self.d_model = d_model
+#         assert d_model % 2 == 0, f"Embedding depth {d_model} is not even"
+#         peh, pew = self.make_pe(d_model, max_h, max_w)  # (d_model, max_h, max_w)
+#         self.register_buffer("peh", peh)
+#         self.register_buffer("pew", pew)
 
-    Reference:
-    https://github.com/full-stack-deep-learning/fsdl-text-recognizer-2021-labs/blob/main/lab9/text_recognizer/models/transformer_util.py
-    """
+#     @staticmethod
+#     def make_pe(d_model: int, max_h: int, max_w: int):
+#         """Compute positional encoding."""
+#         pe_h = WordPositionalEncoding.make_pe(d_model=d_model // 2, max_len=max_h)  # (1, max_h, d_model // 2)
+#         pe_h = pe_h.permute(2, 1, 0)  # (d_model // 2, max_h, 1)
 
-    def __init__(self, d_model: int, max_h: int = 2000, max_w: int = 2000) -> None:
-        super().__init__()
-        self.d_model = d_model
-        assert d_model % 2 == 0, f"Embedding depth {d_model} is not even"
-        pe = self.make_pe(d_model, max_h, max_w)  # (d_model, max_h, max_w)
-        self.register_buffer("pe", pe)
+#         pe_w = WordPositionalEncoding.make_pe(d_model=d_model // 2, max_len=max_w)  # (1, max_w, d_model // 2)
+#         pe_w = pe_w.permute(2, 0, 1)  # (d_model // 2, 1, max_w)
 
-    @staticmethod
-    def make_pe(d_model: int, max_h: int, max_w: int):
-        """Compute positional encoding."""
-        pe_h = WordPositionalEncoding.make_pe(d_model=d_model // 2, max_len=max_h)  # (1, max_h, d_model // 2)
-        pe_h = pe_h.permute(2, 1, 0).expand(-1, -1, max_w)  # (d_model // 2, max_h, max_w)
+#         return pe_h, pe_w
 
-        pe_w = WordPositionalEncoding.make_pe(d_model=d_model // 2, max_len=max_w)  # (1, max_w, d_model // 2)
-        pe_w = pe_w.permute(2, 0, 1).expand(-1, max_h, -1)  # (d_model // 2, max_h, max_w)
-
-        pe = torch.cat([pe_h, pe_w], dim=0)  # (d_model, max_h, max_w)
-        # print(f'pe:{pe.shape}')
-        return pe
-
-    def forward(self, x):
-        """Forward pass.
-
-        Args:
-            x: (B, d_model, H, W)
-
-        Returns:
-            (B, d_model, H, W)
-        """
-        #print(f'imageencode: x:{x.shape}, self.pe[:, : x.size(2), : x.size(3)] {self.pe[:, : x.size(2), : x.size(3)].shape}')
-        #print(self.pe.shape)
-        x = x + self.pe[:, : x.size(2), : x.size(3)]
-        return x
+#     def forward(self, x):
+#         """Forward pass.
+#         Args:
+#             x: (B, d_model, H, W)
+#         Returns:
+#             (B, d_model, H, W)
+#         """
+#         #print(f'imageencode: x:{x.shape}, self.pe[:, : x.size(2), : x.size(3)] {self.pe[:, : x.size(2), : x.size(3)].shape}')
+#         #print(self.pe.shape)
+#         x[:, :self.d_model//2, :, :] = x[:, :self.d_model//2, :, :] + self.peh[:, : x.size(2), : x.size(3)]
+#         x[:, self.d_model//2:, :, :] = x[:, self.d_model//2:, :, :] + self.pew[:, : x.size(2), : x.size(3)]
+#         return x
 
 
 class PatchEmbedding(nn.Module):
     def __init__(self, patch_size, emb_size, img_size):
         self.patch_size = patch_size
         super().__init__()
+
+        # self.projection = nn.Sequential(
+        #     # using a conv layer instead of a linear one -> performance gains
+        #     nn.Conv2d(img_size[0], emb_size, kernel_size=patch_size, stride=patch_size),
+        #     Rearrange('b e (h) (w) -> b (h w) e')
+        # )
+
         self.projection = nn.Sequential(
-            # using a conv layer instead of a linear one -> performance gains
-            nn.Conv2d(img_size[0], emb_size, kernel_size=patch_size, stride=patch_size),
-            Rearrange('b e (h) (w) -> b (h w) e')
-        )
+                                        Rearrange('b c (h s1) (w s2) -> b (h w) (s1 s2 c)', s1=patch_size, s2=patch_size),
+                                        nn.Linear(patch_size * patch_size, emb_size)
+                                       )
                 
-        self.cls_token = nn.Parameter(torch.randn(1,1, emb_size))
-        self.positions = nn.Parameter(torch.randn((img_size[1] * img_size[2] // (patch_size**2)) + 1, emb_size))
+        # self.cls_token = nn.Parameter(torch.randn(1, 1, emb_size)) 
+        # self.positions = nn.Parameter(torch.randn((img_size[1] * img_size[2] // (patch_size**2)) + 1, emb_size))
+
+        self.image_pos_enc = ImagePositionalEncoding((img_size[1] * img_size[2]) // (patch_size**2), emb_size)
 
     def forward(self, x: Tensor) -> Tensor:
-        b, _, _, _ = x.shape
+        b, _, _, _ = x.shape    # (B,E,H,W)
         x = self.projection(x)
-        cls_tokens = repeat(self.cls_token, '() n e -> b n e', b=b)
+        x = self.image_pos_enc(x)
+        # cls_tokens = repeat(self.cls_token, '() n e -> b n e', b=b)
         # prepend the cls token to the input
-        x = torch.cat([cls_tokens, x], dim=1)
+        # x = torch.cat([cls_tokens, x], dim=1)
         # add position embedding
-        x += self.positions
+        # x += self.positions
         return x
     
 
@@ -169,13 +225,12 @@ class TransformerEncoderBlock(nn.Sequential):
             )
             ))
         
-
 class Transformer_Encoder(nn.Sequential):
     def __init__(self, depth, emb_size, drop_p, forward_expansion, num_heads):
         super().__init__(*[TransformerEncoderBlock(emb_size, drop_p, forward_expansion, num_heads) for _ in range(depth)])
 
 class ViT(nn.Sequential):
-    def __init__(self, emb_size, num_heads, num_layers, dim_forward, dropout, patch_size, **kwargs):
+    def __init__(self, emb_size, num_heads, num_layers, dim_forward, dropout, patch_size, *args):
 
         super().__init__(
             PatchEmbedding(patch_size, emb_size, img_size=(1,256,1152)),
@@ -185,7 +240,8 @@ class ViT(nn.Sequential):
 class VisionConvolutions(nn.Module):
     def __init__(self):
         super().__init__()
-        resnet = models.resnet18(weights=None)
+        # vit = models.vision_transformer.VisionTransformer()
+        # resnet = models.resnet18(weights=None)
         conv1 = nn.Conv2d(1, 64, kernel_size=7, stride=2, padding=3, bias=False)
         self.resnet = nn.Sequential(
             conv1,
@@ -196,25 +252,19 @@ class VisionConvolutions(nn.Module):
             resnet.layer2         # (128, 32, 144)
             # resnet.layer3,      # (256,8,68)
         )
-        # self.bottleneck = nn.Conv2d(256, d_model//2, 1)
 
     def forward(self, x):
-        # x = self.resnet(x)
         return self.resnet(x)
 
 
 class Encoder(nn.Module):
     def __init__(self, d_model: int, num_heads: int, num_layers: int, dim_feedforward: int, dropout: float, patch_size: int, activation_fn: str):
         super(Encoder, self).__init__()
-        # self.d_model = d_model
-        # self.vision_convolutions = VisionConvolutions()
-        # self.patch_emb = PatchEmbedding(patch_size, emb_size, img_size=(128, 32, 144))
         encoder_layer = nn.TransformerEncoderLayer(d_model, num_heads, dim_feedforward, dropout, activation_fn, batch_first=True)
-        # self.transformer_encoder = nn.TransformerEncoder(encoder_layer, num_layers)
 
-        self.enc = nn.Sequential(VisionConvolutions(),
-                                PatchEmbedding(patch_size, d_model, img_size=(128, 32, 144)),
-                                nn.TransformerEncoder(encoder_layer, num_layers)
+        self.enc = nn.Sequential(#VisionConvolutions(),
+                                 PatchEmbedding(patch_size, d_model, img_size=(1, 64, 544)),
+                                 nn.TransformerEncoder(encoder_layer, num_layers)
                                 )
     
     def forward(self, x):
@@ -262,7 +312,7 @@ class MathEquationConverter(nn.Module):
     def __init__(self, config_encoder, config_decoder, num_classes, max_len):
         # print(config_decoder)
         super(MathEquationConverter, self).__init__()
-        self.encoder = ViT(*(config_encoder.values()))
+        # self.encoder = ViT(*(config_encoder.values()))
         self.encoder = Encoder(*(config_encoder.values()))
         self.decoder = Decoder(*(config_decoder.values()), num_classes, max_len)
         self.max_len = max_len

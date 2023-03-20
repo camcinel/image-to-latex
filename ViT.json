@@ -7,15 +7,15 @@
     "test_data_dir": "./dataset5/training_56/df_test.pkl",
     "images_root_dir": "./dataset5/formula_images/",
     "vocab_dir": "./dataset5/step2/",
-    "img_h": 256,
-    "img_w": 1152,
+    "img_h": 64,
+    "img_w": 544,
     "batch_size": 32,
     "num_workers": 6
   },
   "experiment": {
     "num_epochs": 50,
     "patience": 5,
-    "learning_rate": 5e-4
+    "learning_rate": 2e-5
   },
 
   "scheduler": {
@@ -25,20 +25,20 @@
   },
 
   "encoder": {
-    "d_model": 256,
-    "num_heads": 8,
-    "num_layers": 12,
-    "dim_feedforward": 4,
+    "d_model": 512,
+    "num_heads": 16,
+    "num_layers": 16,
+    "dim_feedforward": 2048,
     "dropout": 0.3,
-    "patch_size": 8,
+    "patch_size": 16,
     "activation_fn": "gelu"
   },
 
   "decoder": {
-    "d_model": 256,
+    "d_model": 512,
     "num_heads": 4,
     "num_layers": 3,
-    "dim_forward": 256,
+    "dim_forward": 2048,
     "dropout": 0.3
   },
 

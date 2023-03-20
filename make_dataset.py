@@ -24,11 +24,11 @@ class MyDataset(data.Dataset):
         # reindex the meta data.
         self.meta.index = range(self.meta.shape[0])
         self.img_size = img_size
-
-        self.normalize = transforms.Compose([
-                                             transforms.ToTensor(),
-                                             transforms.Normalize(mean=5.96457, std=38.54074)
-                                            ])
+        
+        # self.normalize = transforms.Compose([
+        #                                      transforms.ToTensor(),
+        #                                      transforms.Normalize(mean=5.96457, std=38.54074)
+        #                                     ])
         
 
     def __getitem__(self, index):
@@ -42,17 +42,23 @@ class MyDataset(data.Dataset):
 
         # TODO: add normalization, change the padding for centering the image.
         image = Image.open(os.path.join(self.root, path)).convert('RGBA').getchannel("A")
-        # image = np.array(image)
-        # image = torch.tensor(image, dtype=torch.float32)
-        # print("before norm: ", image.shape)
-        image = self.normalize(np.array(image)).squeeze(0)
-        # print("after norm: ", image.shape)
-        n, m = image.shape
-        a, b = (self.img_size[1] - m) // 2, (self.img_size[0] - n) // 2
-        transform = transforms.Compose([
-            transforms.Pad( (a, b, self.img_size[1]-m-a, self.img_size[0]-n-b), fill=0, padding_mode='constant'),
+
+        n, m = image.size
+        resize_transform = transforms.Compose([
+                                               transforms.Resize((n//2, m//2), interpolation=transforms.InterpolationMode.BILINEAR),
+                                               transforms.ToTensor(),
+                                               transforms.Normalize(mean=5.96457, std=38.54074)
+                                              ])
+
+        image = resize_transform(image).squeeze(0)
+
+        n1, m1 = image.shape
+        
+        a, b = (self.img_size[1] - m1) // 2, (self.img_size[0] - n1) // 2   # (width, height)
+        pad_transform = transforms.Compose([
+            transforms.Pad( (a, b, self.img_size[1]-m1-a, self.img_size[0]-n1-b), fill=0, padding_mode='constant'),
         ])
-        image = transform(image).unsqueeze(0)
+        image = pad_transform(image).unsqueeze(0)
         
         return image, target
 

@@ -28,57 +28,58 @@ class WordPositionalEncoding(nn.Module):
     def forward(self, x):
         x = x + self.pe[:, :x.size(1)]
         return self.dropout(x)
-    
+
+
 class ImagePositionalEncoding(nn.Module):
     """2-D positional encodings for the feature maps produced by the encoder.
-
     Following https://arxiv.org/abs/2103.06450 by Sumeet Singh.
-
     Reference:
     https://github.com/full-stack-deep-learning/fsdl-text-recognizer-2021-labs/blob/main/lab9/text_recognizer/models/transformer_util.py
     """
 
-    def __init__(self, d_model: int, max_h: int = 2000, max_w: int = 2000) -> None:
+    def __init__(self, d_model: int, max_h: int = 1200, max_w: int = 1200) -> None:
         super().__init__()
         self.d_model = d_model
         assert d_model % 2 == 0, f"Embedding depth {d_model} is not even"
-        pe = self.make_pe(d_model, max_h, max_w)  # (d_model, max_h, max_w)
-        self.register_buffer("pe", pe)
+        peh, pew = self.make_pe(d_model, max_h, max_w)  # (d_model, max_h, max_w)
+        self.register_buffer("peh", peh)
+        self.register_buffer("pew", pew)
 
     @staticmethod
     def make_pe(d_model: int, max_h: int, max_w: int):
         """Compute positional encoding."""
         pe_h = WordPositionalEncoding.make_pe(d_model=d_model // 2, max_len=max_h)  # (1, max_h, d_model // 2)
-        pe_h = pe_h.permute(2, 1, 0).expand(-1, -1, max_w)  # (d_model // 2, max_h, max_w)
+        pe_h = pe_h.permute(2, 1, 0)  # (d_model // 2, max_h, 1)
 
         pe_w = WordPositionalEncoding.make_pe(d_model=d_model // 2, max_len=max_w)  # (1, max_w, d_model // 2)
-        pe_w = pe_w.permute(2, 0, 1).expand(-1, max_h, -1)  # (d_model // 2, max_h, max_w)
+        pe_w = pe_w.permute(2, 0, 1)  # (d_model // 2, 1, max_w)
 
-        pe = torch.cat([pe_h, pe_w], dim=0)  # (d_model, max_h, max_w)
-        # print(f'pe:{pe.shape}')
-        return pe
+        return pe_h, pe_w
 
     def forward(self, x):
         """Forward pass.
-
         Args:
             x: (B, d_model, H, W)
-
         Returns:
             (B, d_model, H, W)
         """
         #print(f'imageencode: x:{x.shape}, self.pe[:, : x.size(2), : x.size(3)] {self.pe[:, : x.size(2), : x.size(3)].shape}')
         #print(self.pe.shape)
-        x = x + self.pe[:, : x.size(2), : x.size(3)]
+        x[:, :self.d_model//2, :, :] = x[:, :self.d_model//2, :, :] + self.peh[:, : x.size(2), : x.size(3)]
+        x[:, self.d_model//2:, :, :] = x[:, self.d_model//2:, :, :] + self.pew[:, : x.size(2), : x.size(3)]
         return x
-
 
 # define the encoder using a ResNet-18 backbone
 class Encoder(nn.Module):
     def __init__(self, d_model=256):
         super(Encoder, self).__init__()
         self.conv1 = nn.Conv2d(1, 64, kernel_size=7, stride=2, padding=3, bias=False)
-        resnet = torchvision.models.resnet18(pretrained=False)
+        # resnet = torchvision.models.resnet18(pretrained=False)
+        resnet = torchvision.models.resnet18(weights='DEFAULT')
+
+        for param in resnet.parameters():
+            param.requires_grad = False
+
         self.resnet = nn.Sequential(
             resnet.bn1,
             resnet.relu,
@@ -136,10 +137,10 @@ class Decoder(nn.Module):
 
 
 class MathEquationConverter(nn.Module):
-    def __init__(self, d_model, num_heads, num_layers, dim_forward, dropout, num_classes, max_len):
+    def __init__(self, config_encoder, config_decoder, num_classes, max_len):
         super(MathEquationConverter, self).__init__()
-        self.encoder = Encoder(d_model)
-        self.decoder = Decoder(d_model, num_heads, num_layers, dim_forward, dropout, num_classes, max_len)
+        self.encoder = Encoder(config_encoder["d_model"])
+        self.decoder = Decoder(*(config_decoder.values()), num_classes, max_len)
         self.max_len = max_len
 
     def forward(self, x, y):
