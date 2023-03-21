@@ -75,10 +75,7 @@ class Encoder(nn.Module):
         super(Encoder, self).__init__()
         self.conv1 = nn.Conv2d(1, 64, kernel_size=7, stride=2, padding=3, bias=False)
         # resnet = torchvision.models.resnet18(pretrained=False)
-        resnet = torchvision.models.resnet18(weights='DEFAULT')
-
-        for param in resnet.parameters():
-            param.requires_grad = False
+        resnet = torchvision.models.resnet18(weights=None)
 
         self.resnet = nn.Sequential(
             resnet.bn1,
