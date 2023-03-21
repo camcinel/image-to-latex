@@ -145,7 +145,7 @@ class CALSTM(nn.Module):
 
         prev_word = self.embed(prev_word).squeeze(1)
         h, c = hidden
-        z = self.attention(a, h[-1])
+        z, _ = self.attention(a, h[-1])
         input = torch.cat((z, prev_word), dim=1)
         output, hidden_t = self.lstm(input.unsqueeze(1), hidden)
         hze = torch.cat((output.squeeze(1), z, prev_word), dim=1).unsqueeze(1)
