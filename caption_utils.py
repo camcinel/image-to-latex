@@ -2,6 +2,7 @@ from nltk.translate.bleu_score import sentence_bleu, SmoothingFunction
 import torch.nn.functional as F
 import torch
 
+
 # See this for input references - https://www.nltk.org/api/nltk.translate.html#nltk.translate.bleu_score.sentence_bleu
 # A Caption should be a list of strings.
 # Reference Captions are list of actual captions - list(list(str))
@@ -18,10 +19,12 @@ def bleu4(reference_captions, predicted_caption):
     return 100 * sentence_bleu(reference_captions, predicted_caption,
                                weights=(0, 0, 0, 1), smoothing_function=SmoothingFunction().method1)
 
+
 def get_caption(output, vocab, config):
     max_length = config['max_length']
     pred = output.data[:max_length]
     return [vocab.idx2word[idx.item()] for idx in pred]
+
 
 def remove(captions):
     """special_token = set(['<pad>', '<start>', '<unk>'])
@@ -32,5 +35,5 @@ def remove(captions):
         if x not in special_token:
             output.append(x)
     return output"""
-    special_token = set(['<pad>', '<start>', '<end>', '<unk>'])
+    special_token = {'\pad', '\\bos', '\eos'}
     return [x for x in captions if x not in special_token]

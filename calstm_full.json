@@ -1,5 +1,5 @@
 {
-  "experiment_name": "calstm_experiment",
+  "experiment_name": "calstm_full_experiment",
   "dataset": {
     "train_data_dir": "./dataset5/training_56/df_train.pkl",
     "val_data_dir": "./dataset5/training_56/df_valid.pkl",
@@ -8,12 +8,12 @@
     "vocab_dir": "./dataset5/step2/",
     "img_h": 128,
     "img_w": 1088,
-    "batch_size": 16,
-    "num_workers": 4
+    "batch_size": 8,
+    "num_workers": 0
   },
   "experiment": {
     "num_epochs": 20,
-    "learning_rate": 5e-4
+    "learning_rate": 5e-5
   },
   "model": {
     "hidden_size": 1500,
@@ -23,8 +23,8 @@
     "keep_image": false
   },
   "generation": {
-    "max_length": 150,
+    "max_length": 155,
     "deterministic": false,
-    "temperature": 0.1
+    "temperature": 0.001
   }
 }

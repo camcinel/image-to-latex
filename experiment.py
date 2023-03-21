@@ -1,4 +1,5 @@
 import matplotlib.pyplot as plt
+from matplotlib.patches import Rectangle
 import numpy as np
 import torch
 import torch.nn as nn
@@ -55,7 +56,7 @@ class Experiment(object):
 
         self.__init_model()
 
-        self.scheduler = CosineAnnealingLR(self.__optimizer, T_max=10, eta_min=0)
+        self.scheduler = CosineAnnealingLR(self.__optimizer, T_max=self.__epochs, eta_min=0)
 
         # Load Experiment Data if available
         self.__load_experiment()
@@ -128,9 +129,9 @@ class Experiment(object):
                 cnt += images.size(0)
 
                 if i % 10 == 0:
-                    print('[%d/%d]\t[%d/%d]\t[%d/%d]\tAverage Loss: %.4f'
+                    print('Train:\t[%d/%d]\t[%d/%d]\t[%d/%d]\tAverage Loss: %.4f'
                           % (epoch, self.__epochs, loader_num, n_loaders, i, n_batches, training_loss / cnt))
-                if (i - 1) % 100 == 0:
+                if (i - 1) % 200 == 0:
                     print('Sample Captions:')
                     captions = self.__model.predict(images)
                     for idx, caption in enumerate(captions):
@@ -163,9 +164,9 @@ class Experiment(object):
                     cnt += images.size(0)
 
                     if i % 10 == 0:
-                        print('[%d/%d]\t[%d/%d]\t[%d/%d]\tAverage Loss: %.4f'
+                        print('Val\t[%d/%d]\t[%d/%d]\t[%d/%d]\tAverage Loss: %.4f'
                               % (epoch, self.__epochs, loader_num, n_loaders, i, n_batches, val_loss / cnt))
-                    if (i - 1) % 100 == 0:
+                    if (i - 1) % 200 == 0:
                         print('Sample Captions:')
                         captions = self.__model.predict(images)
                         for idx, caption in enumerate(captions):
@@ -190,20 +191,24 @@ class Experiment(object):
         with torch.no_grad():
             for data in self.__test_loaders:
                 for iter, (images, captions) in enumerate(data):
-                    images = images.contiguous().to(self.device)
-                    captions = captions.contiguous().to(self.device)
-                    output_loss = self.__best_model(images, captions).contiguous().to(self.device)
-                    test_loss += self.__criterion(output_loss.view(-1, len(self.__vocab)),
-                                                  captions.view(-1)) * images.size(0)
+                    images = images.to(self.device)
+                    captions = captions.to(self.device)
+                    output = self.__best_model(images, captions)
+                    test_loss += self.__criterion(output.transpose(1, 2), captions)
                     cnt += images.size(0)
 
-                    output = self.__best_model.predict(images, self.__generation_config)
-                    for j in range(images.size(0)):
+                    pred_captions = self.__best_model.predict(images)
+                    for actual_cap, pred_cap in zip(captions, pred_captions):
                         # TODO: Implement actual captions retrieval
-                        actual_cap = remove([self.__vocab.idx2word[x] for x in captions[j]])
-                        output_cap = remove(get_caption(output[j], self.__vocab, self.__generation_config))
-                        _bleu1 += bleu1([actual_cap], output_cap)
-                        _bleu4 += bleu4([actual_cap], output_cap)
+                        actual_cap = actual_cap.tolist()
+                        actual_cap = remove([self.__vocab.idx2word[x] for x in actual_cap])
+                        pred_cap = remove(pred_cap)
+                        _bleu1 += bleu1([actual_cap], pred_cap)
+                        _bleu4 += bleu4([actual_cap], pred_cap)
+                    
+                    if iter % 10 == 0:
+                        print(f'Actual caption: {" ".join(actual_cap)}')
+                        print(f'Predicted caption: {" ".join(pred_cap)}')
 
         _bleu1 /= cnt
         _bleu4 /= cnt
@@ -211,7 +216,6 @@ class Experiment(object):
 
         result_str = "Test Performance: Loss: {}, Bleu1: {}, Bleu4: {}".format(test_loss, _bleu1, _bleu4)
         self.__log(result_str)
-        print(f'The actual cap is: {actual_cap} The prediction is:{output_cap}')
 
         return test_loss, _bleu1, _bleu4
 
@@ -262,3 +266,74 @@ class Experiment(object):
         plt.legend(loc='best')
         plt.title(self.__name + " Stats Plot")
         plt.savefig(os.path.join(self.__experiment_dir, "stat_plot.png"))
+        
+    def temp_tests(self, temps):
+        self.__best_model.decoder.temperature = 0.1
+        init_temp = self.__best_model.decoder.temperature
+        temp_res = []
+        for temp in temps:
+            print(f'Testing at temperature {temp}')
+            self.__best_model.decoder.temperature = temp
+            loss, _bleu1, _bleu4 = self.test()
+            res = (temp, loss, _bleu1, _bleu4)
+            temp_res.append(res)
+        for res in temp_res:
+            print('Temperature: %.e\tLoss: %.5f\tBLEU 1: %.5f\t BLEU 4: %.5f' % res)
+        self.__best_model.decoder.temperature = init_temp
+        return temp_res
+    
+    def give_attention_image(self, name='attentions'):
+        brackets = set(['[', ']', '(', ')', '{', '}'])
+        
+        with torch.no_grad():
+            image, _ = next(iter(self.__test_loaders[0]))
+            image = image.to(device=self.device)
+            
+            self.__best_model.set_determinism(True)
+            captions, alphas = self.__best_model.predict_with_attention(image[0].unsqueeze(0))
+            self.__best_model.set_determinism(False)
+            
+            caption, alphas, image = captions[0], alphas.squeeze(0), image[0]
+            image = 255 - self.unormalize(image).to(device='cpu').squeeze(0)
+            
+            no_bracket_idx = [x for x in range(len(caption)) if caption[x] not in brackets]
+            n = len(no_bracket_idx)
+            n_rows = (n + 1) // 2
+            n_cols = 2
+            
+            H = 4  # height of feature receptive fields
+            W = 34  # width of feature receptive fields
+            S = 32  # shrink factor (2 ** 5)
+            
+            fig, axes = plt.subplots(nrows = n_rows, ncols = n_cols, figsize=(n_cols * 10, n_rows * 4))
+            for i in range(n):
+                h1, w1 = divmod(i, 2)  # coordinates for subplot
+                axes[h1, w1].imshow(image, cmap='gray')
+                axes[h1, w1].set_title(caption[no_bracket_idx[i]])
+                for j in range(len(alphas[i])):
+                    h2, w2 = divmod(j, W)  # coordinates for attention square
+                    patch = Rectangle((S * w2, S * h2), S, S, edgecolor='none', facecolor='r', alpha=alphas[no_bracket_idx[i],j].item())
+                    axes[h1, w1].add_patch(patch)
+            plt.savefig(os.path.join(self.__experiment_dir, name + '.png'))
+            plt.show()
+            
+            """
+            fig = plt.figure(figsize=(20,60))
+            for i in range(n):
+                plt.subplot(n_rows, 2, i+1)
+                plt.imshow(image, cmap='gray')
+                plt.title(caption[no_bracket_idx[i]])
+                for j in range(len(alphas[i])):
+                    h, w = divmod(j, 34)
+                    patch = Rectangle((31 + 32 * h, 32 * w), 32, 32, edgecolor='none', facecolor='r', alpha=alphas[i,j].item())
+                    ax = plt.gca()
+                    ax.add_patch(patch)
+            plt.savefig(os.path.join(self.__experiment_dir, name + '.png'))
+            plt.show()
+            """
+            
+    def unormalize(self, tensor, mean=[5.96457], std=[38.54074]):
+        for t, m, s in zip(tensor, mean, std):
+            t.mul_(s).add_(m)
+        return tensor
+    

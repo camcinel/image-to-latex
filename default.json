@@ -25,6 +25,6 @@
   "generation": {
     "max_length": 20,
     "deterministic": false,
-    "temperature": 0.1
+    "temperature": 0.001
   }
 }
