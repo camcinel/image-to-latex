@@ -27,13 +27,5 @@ def get_caption(output, vocab, config):
 
 
 def remove(captions):
-    """special_token = set(['<pad>', '<start>', '<unk>'])
-    output = []
-    for x in captions:
-        if x == '<end>':
-            return output
-        if x not in special_token:
-            output.append(x)
-    return output"""
     special_token = {'\pad', '\\bos', '\eos'}
     return [x for x in captions if x not in special_token]

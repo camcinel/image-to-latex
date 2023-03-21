@@ -50,11 +50,10 @@ class InitStateModel(nn.Module):
         return h.contiguous(), c.contiguous()
 
 
-
 class AttentionBlock(nn.Module):
     def __init__(self, D, hidden_size):
         super().__init__()
-        
+
         self.mlp = nn.Sequential(
             nn.Linear(D + hidden_size, 256, bias=True),
             nn.Tanh(),
@@ -62,54 +61,18 @@ class AttentionBlock(nn.Module):
             nn.Tanh(),
             nn.Linear(128, 1, bias=True)
         )
-        
+
         self.softmax = nn.Softmax(dim=1)
 
     def forward(self, a, h):
         h = h.unsqueeze(1).repeat(1, a.size(1), 1)
         att_input = torch.cat((a, h), dim=2)
-        
+
         alpha = self.mlp(att_input).squeeze(2)
         alpha = self.softmax(alpha)
-        # z = torch.bmm(alpha, a)
         z = (alpha.unsqueeze(2) * a).sum(dim=1)
-        
-        return z
-    
-    def forward_with_attention(self, a, h):
-        h = h.unsqueeze(1).repeat(1, a.size(1), 1)
-        att_input = torch.cat((a, h), dim=2)
-        
-        alpha = self.mlp(att_input).squeeze(2)
-        alpha = self.softmax(alpha)
-        # z = torch.bmm(alpha, a)
-        z = (alpha.unsqueeze(2) * a).sum(dim=1)
-        
+
         return z, alpha
-
-"""
-class AttentionBlock(nn.Module):
-    def __init__(self, D, hidden_size):
-        super().__init__()
-        
-        self.enc_att = nn.Linear(D, 256)
-        self.dec_att = nn.Linear(hidden_size, 256)
-        self.full_att = nn.Linear(256, 1)
-        
-        self.relu = nn.ReLU()
-        
-        self.softmax = nn.Softmax(dim=1)
-    
-    def forward(self, a, h):
-        att1 = self.enc_att(a)
-        att2 = self.dec_att(h)
-        att = self.full_att(self.relu(att1 + att2.unsqueeze(1))).squeeze(2)
-        alpha = self.softmax(att)
-        
-        z = (a * alpha.unsqueeze(2)).sum(dim=1)
-        
-        return z
-"""        
 
 
 class CALSTM(nn.Module):
@@ -130,7 +93,7 @@ class CALSTM(nn.Module):
         hze = None  # concatenation to be fed into final linear layer
         for i in range(y.size(1)):
             h, c = hidden
-            z = self.attention(a, h[-1])
+            z, _ = self.attention(a, h[-1])
             input = torch.cat((z, y[:, i, :]), dim=1)
             output, hidden = self.lstm(input.unsqueeze(1), hidden)
             if hze is None:
@@ -142,22 +105,9 @@ class CALSTM(nn.Module):
     def predict(self, a, hidden, prev_word=None):
         if prev_word is None:
             prev_word = torch.tensor([self.pad_idx] * a.size(0), dtype=torch.long, device=a.get_device()).view(-1, 1)  # initial word is '\\pad'
-
         prev_word = self.embed(prev_word).squeeze(1)
         h, c = hidden
-        z, _ = self.attention(a, h[-1])
-        input = torch.cat((z, prev_word), dim=1)
-        output, hidden_t = self.lstm(input.unsqueeze(1), hidden)
-        hze = torch.cat((output.squeeze(1), z, prev_word), dim=1).unsqueeze(1)
-        return hze, hidden_t
-    
-    def predict_with_attention(self, a, hidden, prev_word=None):
-        if prev_word is None:
-            prev_word = torch.tensor([self.pad_idx] * a.size(0), dtype=torch.long, device=a.get_device()).view(-1, 1)  # initial word is '\\pad'
-
-        prev_word = self.embed(prev_word).squeeze(1)
-        h, c = hidden
-        z, alpha = self.attention.forward_with_attention(a, h[-1])
+        z, alpha = self.attention(a, h[-1])
         input = torch.cat((z, prev_word), dim=1)
         output, hidden_t = self.lstm(input.unsqueeze(1), hidden)
         hze = torch.cat((output.squeeze(1), z, prev_word), dim=1).unsqueeze(1)
@@ -190,44 +140,13 @@ class Decoder(nn.Module):
 
     def predict(self, a, hidden):
         prev_word = None
-        captions = []
-        for _ in range(a.size(0)):
-            captions.append([])
-        add_more = [True] * a.size(0)  # tells model to add another word. Marked to false when the last word added is '\\end'
-
-        for _ in range(self.max_length):
-            hze, hidden_t = self.calstm.predict(a, hidden, prev_word=prev_word)
-            pred = self.deep_output_layer(hze).squeeze(1)
-            pred.div_(self.temperature)
-            pred = nn.functional.softmax(pred, dim=1)
-            if self.determinism:
-                word_idx = torch.argmax(pred, dim=1).view(-1, 1)
-            else:
-                word_idx = torch.multinomial(pred, 1)
-
-            for i, (caption, idx, should_add) in enumerate(zip(captions, word_idx, add_more)):
-                if should_add:
-                    caption.append(self.vocab.idx2word[idx.item()])
-                if idx == self.vocab.word2idx['\eos']:
-                    add_more[i] = False
-
-            if not any(add_more):
-                break
-
-            prev_word = word_idx
-            hidden = hidden_t
-        return captions
-    
-    def predict_with_attention(self, a, hidden):
-        prev_word = None
-        captions = []
-        for _ in range(a.size(0)):
-            captions.append([])
-        add_more = [True] * a.size(0)  # tells model to add another word. Marked to false when the last word added is '\\end'
+        captions = [[] for _ in range(a.size(0))]
+        add_more = [True] * a.size(
+            0)  # tells model to add another word. Marked to false when the last word added is '\\end'
         alphas = None
 
         for _ in range(self.max_length):
-            hze, hidden_t, alpha = self.calstm.predict_with_attention(a, hidden, prev_word=prev_word)
+            hze, hidden_t, alpha = self.calstm.predict(a, hidden, prev_word=prev_word)
             pred = self.deep_output_layer(hze).squeeze(1)
             pred.div_(self.temperature)
             pred = nn.functional.softmax(pred, dim=1)
@@ -241,7 +160,7 @@ class Decoder(nn.Module):
                     caption.append(self.vocab.idx2word[idx.item()])
                 if idx == self.vocab.word2idx['\eos']:
                     add_more[i] = False
-                    
+
             if alphas is None:
                 alphas = alpha.unsqueeze(1)
             else:
@@ -274,17 +193,10 @@ class ImageToLatex(nn.Module):
     def predict(self, image):
         a = self.encoder(image)
         hidden = self.init_state(a)
-        captions = self.decoder.predict(a, hidden)
+        captions, alphas = self.decoder.predict(a, hidden)
 
-        return captions
-    
-    def predict_with_attention(self, image):
-        a = self.encoder(image)
-        hidden = self.init_state(a)
-        captions, alphas = self.decoder.predict_with_attention(a, hidden)
-        
         return captions, alphas
-    
+
     def set_determinism(self, value):
         self.determinism = value
         self.decoder.determinism = value

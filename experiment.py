@@ -19,6 +19,12 @@ from torch.optim.lr_scheduler import CosineAnnealingLR
 # The boilerplate code to setup the experiment, log stats, checkpoints and plotting have been provided to you.
 # You only need to implement the main training logic of your experiment and implement train, val and test methods.
 # You are free to modify or restructure the code as per your convenience.
+def unormalize(tensor, mean=[5.96457], std=[38.54074]):
+    for t, m, s in zip(tensor, mean, std):
+        t.mul_(s).add_(m)
+    return tensor
+
+
 class Experiment(object):
     def __init__(self, name):
         config_data = read_file_in_dir('./', name + '.json')
@@ -52,7 +58,8 @@ class Experiment(object):
 
         # Set these Criterion and Optimizers Correctly
         self.__criterion = nn.CrossEntropyLoss()
-        self.__optimizer = optim.Adam(self.__model.parameters(), lr=config_data['experiment']['learning_rate'], weight_decay=5e-5)
+        self.__optimizer = optim.Adam(self.__model.parameters(), lr=config_data['experiment']['learning_rate'],
+                                      weight_decay=5e-5)
 
         self.__init_model()
 
@@ -133,7 +140,7 @@ class Experiment(object):
                           % (epoch, self.__epochs, loader_num, n_loaders, i, n_batches, training_loss / cnt))
                 if (i - 1) % 200 == 0:
                     print('Sample Captions:')
-                    captions = self.__model.predict(images)
+                    captions, _ = self.__model.predict(images)
                     for idx, caption in enumerate(captions):
                         print(f'Caption {idx}')
                         print(' '.join(caption))
@@ -168,7 +175,7 @@ class Experiment(object):
                               % (epoch, self.__epochs, loader_num, n_loaders, i, n_batches, val_loss / cnt))
                     if (i - 1) % 200 == 0:
                         print('Sample Captions:')
-                        captions = self.__model.predict(images)
+                        captions, _ = self.__model.predict(images)
                         for idx, caption in enumerate(captions):
                             print(f'Caption {idx}')
                             print(' '.join(caption))
@@ -197,15 +204,14 @@ class Experiment(object):
                     test_loss += self.__criterion(output.transpose(1, 2), captions)
                     cnt += images.size(0)
 
-                    pred_captions = self.__best_model.predict(images)
+                    pred_captions, _ = self.__best_model.predict(images)
                     for actual_cap, pred_cap in zip(captions, pred_captions):
-                        # TODO: Implement actual captions retrieval
                         actual_cap = actual_cap.tolist()
                         actual_cap = remove([self.__vocab.idx2word[x] for x in actual_cap])
                         pred_cap = remove(pred_cap)
                         _bleu1 += bleu1([actual_cap], pred_cap)
                         _bleu4 += bleu4([actual_cap], pred_cap)
-                    
+
                     if iter % 10 == 0:
                         print(f'Actual caption: {" ".join(actual_cap)}')
                         print(f'Predicted caption: {" ".join(pred_cap)}')
@@ -266,7 +272,7 @@ class Experiment(object):
         plt.legend(loc='best')
         plt.title(self.__name + " Stats Plot")
         plt.savefig(os.path.join(self.__experiment_dir, "stat_plot.png"))
-        
+
     def temp_tests(self, temps):
         self.__best_model.decoder.temperature = 0.1
         init_temp = self.__best_model.decoder.temperature
@@ -281,59 +287,40 @@ class Experiment(object):
             print('Temperature: %.e\tLoss: %.5f\tBLEU 1: %.5f\t BLEU 4: %.5f' % res)
         self.__best_model.decoder.temperature = init_temp
         return temp_res
-    
+
     def give_attention_image(self, name='attentions'):
-        brackets = set(['[', ']', '(', ')', '{', '}'])
-        
+        brackets = {'[', ']', '(', ')', '{', '}'}
+
         with torch.no_grad():
             image, _ = next(iter(self.__test_loaders[0]))
             image = image.to(device=self.device)
-            
+
             self.__best_model.set_determinism(True)
-            captions, alphas = self.__best_model.predict_with_attention(image[0].unsqueeze(0))
+            captions, alphas = self.__best_model.predict(image[0].unsqueeze(0))
             self.__best_model.set_determinism(False)
-            
+
             caption, alphas, image = captions[0], alphas.squeeze(0), image[0]
-            image = 255 - self.unormalize(image).to(device='cpu').squeeze(0)
-            
+            image = 255 - unormalize(image).to(device='cpu').squeeze(0)
+
             no_bracket_idx = [x for x in range(len(caption)) if caption[x] not in brackets]
             n = len(no_bracket_idx)
             n_rows = (n + 1) // 2
             n_cols = 2
-            
+
             H = 4  # height of feature receptive fields
             W = 34  # width of feature receptive fields
             S = 32  # shrink factor (2 ** 5)
-            
-            fig, axes = plt.subplots(nrows = n_rows, ncols = n_cols, figsize=(n_cols * 10, n_rows * 4))
+
+            fig, axes = plt.subplots(nrows=n_rows, ncols=n_cols, figsize=(n_cols * 10, n_rows * 4))
             for i in range(n):
                 h1, w1 = divmod(i, 2)  # coordinates for subplot
                 axes[h1, w1].imshow(image, cmap='gray')
                 axes[h1, w1].set_title(caption[no_bracket_idx[i]])
                 for j in range(len(alphas[i])):
                     h2, w2 = divmod(j, W)  # coordinates for attention square
-                    patch = Rectangle((S * w2, S * h2), S, S, edgecolor='none', facecolor='r', alpha=alphas[no_bracket_idx[i],j].item())
+                    patch = Rectangle((S * w2, S * h2), S, S, edgecolor='none', facecolor='r',
+                                      alpha=alphas[no_bracket_idx[i], j].item())
                     axes[h1, w1].add_patch(patch)
             plt.savefig(os.path.join(self.__experiment_dir, name + '.png'))
             plt.show()
-            
-            """
-            fig = plt.figure(figsize=(20,60))
-            for i in range(n):
-                plt.subplot(n_rows, 2, i+1)
-                plt.imshow(image, cmap='gray')
-                plt.title(caption[no_bracket_idx[i]])
-                for j in range(len(alphas[i])):
-                    h, w = divmod(j, 34)
-                    patch = Rectangle((31 + 32 * h, 32 * w), 32, 32, edgecolor='none', facecolor='r', alpha=alphas[i,j].item())
-                    ax = plt.gca()
-                    ax.add_patch(patch)
-            plt.savefig(os.path.join(self.__experiment_dir, name + '.png'))
-            plt.show()
-            """
-            
-    def unormalize(self, tensor, mean=[5.96457], std=[38.54074]):
-        for t, m, s in zip(tensor, mean, std):
-            t.mul_(s).add_(m)
-        return tensor
-    
+            plt.close()
