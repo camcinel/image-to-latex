@@ -132,7 +132,7 @@ class Decoder(nn.Module):
                  num_classes: int, 
                  max_len: int
                 ):
-        super(Decoder, self).__init__()
+        super().__init__()
         self.d_model = d_model
         self.pos_encoder = WordPositionalEncoding(d_model)
         decoder_layer = nn.TransformerDecoderLayer(d_model=d_model, nhead=nhead, dim_feedforward=dim_feedforward, dropout=dropout, batch_first=True)
@@ -168,7 +168,7 @@ class MathEquationConverter(nn.Module):
                  config_encoder: dict, 
                  config_decoder: dict 
                 ):
-        super(MathEquationConverter, self).__init__()
+        super().__init__()
         self.encoder = Encoder(**config_encoder)
         self.decoder = Decoder(**config_decoder)
         self.max_len = config_decoder['max_len']
