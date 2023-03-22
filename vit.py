@@ -6,58 +6,6 @@ from einops.layers.torch import Rearrange, Reduce
 from einops import rearrange, reduce, repeat
 import torch.nn.functional as F
 import torchvision.models as models
-# torchvision.models.vision_transformer.VisionTransformer
-
-
-# class ImagePositionalEncoding_vit(nn.Module):
-#     """
-#     Module for adding position embeddings to a sequence of image patches.
-#     """
-#     def __init__(self, num_patches, embed_dim, dropout=0.1, max_len=1200):
-#         super().__init__()
-#         # self.patch_size = patch_size
-#         self.embed_dim = embed_dim
-#         self.dropout = nn.Dropout(p=dropout)
-        
-#         # Create learnable parameters for the position embeddings
-#         # num_patches = (224 // patch_size) ** 2
-#         # self.position_embeddings = nn.Parameter(self.make_pe(embed_dim, num_patches + 1, max_len))
-#         self.position_embeddings = self.make_pe(embed_dim, num_patches + 1, max_len)
-#         self.device =  torch.device('cuda' if torch.has_cuda else 'cpu')
-
-#     @staticmethod
-#     def make_pe(d_model: int, seq_len: int, max_len: int):
-#         """Compute positional encoding."""
-#         pe = torch.zeros(max_len, d_model)
-#         position = torch.arange(0, max_len, dtype=torch.float).unsqueeze(1)
-#         div_term = torch.exp(torch.arange(0, d_model, 2).float() * (-math.log(10000.0) / d_model))
-#         pe[:, 0::2] = torch.sin(position * div_term[:d_model])
-#         pe[:, 1::2] = torch.cos(position * div_term[:d_model])
-#         return pe
-    
-#     def forward(self, x):
-#         """
-#         Applies position embeddings to a batch of image patches.
-
-#         Args:
-#             x (tensor): Input tensor of shape (batch_size, num_patches, embed_dim).
-        
-#         Returns:
-#             tensor: Output tensor with position embeddings added, of shape (batch_size, num_patches + 1, embed_dim).
-#         """
-#         batch_size, num_patches, embed_dim = x.shape
-        
-#         # Add the CLS token at the beginning of the sequence
-#         cls_token = nn.Parameter(torch.randn(1, 1, embed_dim))
-#         cls_token = cls_token.expand(batch_size, -1, -1).to(self.device)
-#         x = torch.cat([cls_token, x], dim=1)
-        
-#         # Add the position embeddings to each patch and the CLS token
-#         position_embeddings = self.position_embeddings[:num_patches + 1].unsqueeze(0)
-#         position_embeddings = position_embeddings.expand(batch_size, -1, -1).to(self.device)
-#         x = x + position_embeddings
-        
-#         return self.dropout(x)
 
 
 # define the word position encoding layer
@@ -143,7 +91,7 @@ class PatchEmbedding(nn.Module):
 
 class Encoder(nn.Module):
     def __init__(self, d_model: int, num_heads: int, num_layers: int, dim_feedforward: int, dropout: float, patch_size: int, activation_fn: str):
-        super(Encoder, self).__init__()
+        super().__init__()
         encoder_layer = nn.TransformerEncoderLayer(d_model, num_heads, dim_feedforward, dropout, activation_fn, batch_first=True)
 
         self.enc = nn.Sequential(PatchEmbedding(patch_size, d_model, img_size=(1, 128, 1088)),
