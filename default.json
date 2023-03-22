@@ -8,16 +8,16 @@
     "vocab_dir": "./dataset5/step2/",
     "img_h": 128,
     "img_w": 1088,
-    "batch_size": 32,
+    "batch_size": 64,
     "num_workers": 10
   },
   "experiment": {
-    "num_epochs": 50,
+    "num_epochs": 35,
     "learning_rate": 5e-5
   },
 
   "scheduler": {
-    "milestones": [10],
+    "milestones": [20],
     "gamma": 0.5
 
   },

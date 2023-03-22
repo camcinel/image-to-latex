@@ -29,7 +29,7 @@ def get_coco_dataloader(imgs_root_dir, meta_data_path, config_data):
     np.random.seed(140)
     torch.manual_seed(140)
     np.random.shuffle(padded_lengths)
-    padded_lengths = padded_lengths[:2]
+    # padded_lengths = padded_lengths[2:4]
     for padded_length in padded_lengths:
         data = meta_data[meta_data['padded_seq_len'] == padded_length]
         dataset = MyDataset(root=imgs_root_dir,
