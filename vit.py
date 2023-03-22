@@ -9,55 +9,55 @@ import torchvision.models as models
 # torchvision.models.vision_transformer.VisionTransformer
 
 
-class ImagePositionalEncoding_vit(nn.Module):
-    """
-    Module for adding position embeddings to a sequence of image patches.
-    """
-    def __init__(self, num_patches, embed_dim, dropout=0.1, max_len=1200):
-        super().__init__()
-        # self.patch_size = patch_size
-        self.embed_dim = embed_dim
-        self.dropout = nn.Dropout(p=dropout)
+# class ImagePositionalEncoding_vit(nn.Module):
+#     """
+#     Module for adding position embeddings to a sequence of image patches.
+#     """
+#     def __init__(self, num_patches, embed_dim, dropout=0.1, max_len=1200):
+#         super().__init__()
+#         # self.patch_size = patch_size
+#         self.embed_dim = embed_dim
+#         self.dropout = nn.Dropout(p=dropout)
         
-        # Create learnable parameters for the position embeddings
-        # num_patches = (224 // patch_size) ** 2
-        # self.position_embeddings = nn.Parameter(self.make_pe(embed_dim, num_patches + 1, max_len))
-        self.position_embeddings = self.make_pe(embed_dim, num_patches + 1, max_len)
-        self.device =  torch.device('cuda' if torch.has_cuda else 'cpu')
+#         # Create learnable parameters for the position embeddings
+#         # num_patches = (224 // patch_size) ** 2
+#         # self.position_embeddings = nn.Parameter(self.make_pe(embed_dim, num_patches + 1, max_len))
+#         self.position_embeddings = self.make_pe(embed_dim, num_patches + 1, max_len)
+#         self.device =  torch.device('cuda' if torch.has_cuda else 'cpu')
 
-    @staticmethod
-    def make_pe(d_model: int, seq_len: int, max_len: int):
-        """Compute positional encoding."""
-        pe = torch.zeros(max_len, d_model)
-        position = torch.arange(0, max_len, dtype=torch.float).unsqueeze(1)
-        div_term = torch.exp(torch.arange(0, d_model, 2).float() * (-math.log(10000.0) / d_model))
-        pe[:, 0::2] = torch.sin(position * div_term[:d_model])
-        pe[:, 1::2] = torch.cos(position * div_term[:d_model])
-        return pe
+#     @staticmethod
+#     def make_pe(d_model: int, seq_len: int, max_len: int):
+#         """Compute positional encoding."""
+#         pe = torch.zeros(max_len, d_model)
+#         position = torch.arange(0, max_len, dtype=torch.float).unsqueeze(1)
+#         div_term = torch.exp(torch.arange(0, d_model, 2).float() * (-math.log(10000.0) / d_model))
+#         pe[:, 0::2] = torch.sin(position * div_term[:d_model])
+#         pe[:, 1::2] = torch.cos(position * div_term[:d_model])
+#         return pe
     
-    def forward(self, x):
-        """
-        Applies position embeddings to a batch of image patches.
+#     def forward(self, x):
+#         """
+#         Applies position embeddings to a batch of image patches.
 
-        Args:
-            x (tensor): Input tensor of shape (batch_size, num_patches, embed_dim).
+#         Args:
+#             x (tensor): Input tensor of shape (batch_size, num_patches, embed_dim).
         
-        Returns:
-            tensor: Output tensor with position embeddings added, of shape (batch_size, num_patches + 1, embed_dim).
-        """
-        batch_size, num_patches, embed_dim = x.shape
+#         Returns:
+#             tensor: Output tensor with position embeddings added, of shape (batch_size, num_patches + 1, embed_dim).
+#         """
+#         batch_size, num_patches, embed_dim = x.shape
         
-        # Add the CLS token at the beginning of the sequence
-        cls_token = nn.Parameter(torch.randn(1, 1, embed_dim))
-        cls_token = cls_token.expand(batch_size, -1, -1).to(self.device)
-        x = torch.cat([cls_token, x], dim=1)
+#         # Add the CLS token at the beginning of the sequence
+#         cls_token = nn.Parameter(torch.randn(1, 1, embed_dim))
+#         cls_token = cls_token.expand(batch_size, -1, -1).to(self.device)
+#         x = torch.cat([cls_token, x], dim=1)
         
-        # Add the position embeddings to each patch and the CLS token
-        position_embeddings = self.position_embeddings[:num_patches + 1].unsqueeze(0)
-        position_embeddings = position_embeddings.expand(batch_size, -1, -1).to(self.device)
-        x = x + position_embeddings
+#         # Add the position embeddings to each patch and the CLS token
+#         position_embeddings = self.position_embeddings[:num_patches + 1].unsqueeze(0)
+#         position_embeddings = position_embeddings.expand(batch_size, -1, -1).to(self.device)
+#         x = x + position_embeddings
         
-        return self.dropout(x)
+#         return self.dropout(x)
 
 
 # define the word position encoding layer
@@ -127,143 +127,17 @@ class PatchEmbedding(nn.Module):
     def __init__(self, patch_size, emb_size, img_size):
         self.patch_size = patch_size
         super().__init__()
-
-        # self.projection = nn.Sequential(
-        #     # using a conv layer instead of a linear one -> performance gains
-        #     nn.Conv2d(img_size[0], emb_size, kernel_size=patch_size, stride=patch_size),
-        #     Rearrange('b e (h) (w) -> b (h w) e')
-        # )
-
-        self.projection = nn.Sequential(
-                                        Rearrange('b c (h s1) (w s2) -> b (h w) (s1 s2 c)', s1=patch_size, s2=patch_size),
-                                        nn.Linear(patch_size * patch_size * img_size[0], emb_size)
+        self.projection = nn.Sequential(Rearrange('b c (h s1) (w s2) -> b h w (s1 s2 c)', s1=patch_size, s2=patch_size),
+                                        nn.Linear(patch_size * patch_size * img_size[0], emb_size//2),
+                                        Rearrange('b h w e -> b e h w')
                                        )
-                
-        # self.cls_token = nn.Parameter(torch.randn(1, 1, emb_size)) 
-        # self.positions = nn.Parameter(torch.randn((img_size[1] * img_size[2] // (patch_size**2)) + 1, emb_size))
-
-        self.image_pos_enc = ImagePositionalEncoding_vit((img_size[1] * img_size[2]) // (patch_size**2), emb_size)
+        self.image_pos_enc = ImagePositionalEncoding(emb_size)
 
     def forward(self, x: Tensor) -> Tensor:
         b, _, _, _ = x.shape    # (B,E,H,W)
         x = self.projection(x)
-        x = self.image_pos_enc(x)
-        # cls_tokens = repeat(self.cls_token, '() n e -> b n e', b=b)
-        # prepend the cls token to the input
-        # x = torch.cat([cls_tokens, x], dim=1)
-        # add position embedding
-        # x += self.positions
-        return x
-    
-
-class MultiHeadAttention(nn.Module):
-    def __init__(self, emb_size, num_heads, att_dropout):
-        super().__init__()
-        self.emb_size = emb_size
-        self.num_heads = num_heads
-        # fuse the queries, keys and values in one matrix
-        self.qkv = nn.Linear(emb_size, emb_size * 3)
-        self.att_drop = nn.Dropout(att_dropout)
-        self.projection = nn.Linear(emb_size, emb_size)
-        
-    def forward(self, x : Tensor, mask: Tensor = None) -> Tensor:
-        # split keys, queries and values in num_heads
-        qkv = rearrange(self.qkv(x), "b n (h d qkv) -> (qkv) b h n d", h=self.num_heads, qkv=3)
-        queries, keys, values = qkv[0], qkv[1], qkv[2]
-        # sum up over the last axis
-        energy = torch.einsum('bhqd, bhkd -> bhqk', queries, keys) # batch, num_heads, query_len, key_len
-        if mask is not None:
-            fill_value = torch.finfo(torch.float32).min
-            energy.mask_fill(~mask, fill_value)
-            
-        scaling = self.emb_size ** (1/2)
-        att = F.softmax(energy, dim=-1) / scaling
-        att = self.att_drop(att)
-        # sum up over the third axis
-        out = torch.einsum('bhal, bhlv -> bhav ', att, values)
-        out = rearrange(out, "b h n d -> b n (h d)")
-        out = self.projection(out)
-        return out
-    
-class ResidualAdd(nn.Module):
-    def __init__(self, fn):
-        super().__init__()
-        self.fn = fn
-        
-    def forward(self, x, **kwargs):
-        res = x
-        x = self.fn(x, **kwargs)
-        x += res
-        return x
-    
-class FeedForwardBlock(nn.Sequential):
-    def __init__(self, emb_size, forward_expansion, forward_drop_p):
-        super().__init__(
-            nn.Linear(emb_size, forward_expansion * emb_size),
-            nn.GELU(),
-            nn.Dropout(forward_drop_p),
-            nn.Linear(forward_expansion * emb_size, emb_size),
-        )
-
-class TransformerEncoderBlock(nn.Sequential):
-    def __init__(self,
-                 emb_size,
-                 drop_p,
-                 forward_expansion,
-                 num_heads,
-                ):
-        super().__init__(
-            ResidualAdd(nn.Sequential(
-                nn.LayerNorm(emb_size),
-                MultiHeadAttention(emb_size, num_heads, drop_p),
-                nn.Dropout(drop_p)
-            )),
-            ResidualAdd(nn.Sequential(
-                nn.LayerNorm(emb_size),
-                FeedForwardBlock(emb_size, forward_expansion, drop_p),
-                nn.Dropout(drop_p)
-            )
-            ))
-        
-class Transformer_Encoder(nn.Sequential):
-    def __init__(self, depth, emb_size, drop_p, forward_expansion, num_heads):
-        super().__init__(*[TransformerEncoderBlock(emb_size, drop_p, forward_expansion, num_heads) for _ in range(depth)])
-
-class ViT(nn.Sequential):
-    def __init__(self, emb_size, num_heads, num_layers, dim_forward, dropout, patch_size, *args):
-
-        super().__init__(
-            PatchEmbedding(patch_size, emb_size, img_size=(1,256,1152)),
-            Transformer_Encoder(num_layers, emb_size, dropout, dim_forward, num_heads)
-        )
-
-class VisionConvolutions(nn.Module):
-    def __init__(self, d_model):
-        super().__init__()
-        # vit = models.vision_transformer.VisionTransformer()
-        resnet = models.resnet18(weights=None)
-        conv1 = nn.Conv2d(1, 64, kernel_size=7, stride=2, padding=3, bias=False)
-        self.resnet = nn.Sequential(
-            conv1,
-            resnet.bn1,
-            resnet.relu,
-            resnet.maxpool,
-            resnet.layer1,
-            resnet.layer2,         # (128, 32, 144)
-            # baseline
-            resnet.layer3,      # (256,8,68)
-        )
-
-        # baseline
-        self.bottleneck = nn.Conv2d(256, d_model//2, 1)
-        self.image_pos_enc = ImagePositionalEncoding(d_model)
-
-    def forward(self, x):
-        x = self.resnet(x)
-        # baseline
-        x = self.bottleneck(x)
-        x = self.image_pos_enc(torch.cat((x,x), dim=1))
-        x = x.view(x.size(0), x.size(1), -1).permute(0,2,1)
+        x = self.image_pos_enc( torch.cat( (x, x), dim=1 ) )
+        x = x.view(x.size(0), x.size(1), -1).permute(0, 2, 1)
         return x
 
 
@@ -272,14 +146,11 @@ class Encoder(nn.Module):
         super(Encoder, self).__init__()
         encoder_layer = nn.TransformerEncoderLayer(d_model, num_heads, dim_feedforward, dropout, activation_fn, batch_first=True)
 
-        self.enc = nn.Sequential(VisionConvolutions(d_model),
-                                 #PatchEmbedding(patch_size, d_model, img_size=(128, 32, 144)),
-                                 #nn.TransformerEncoder(encoder_layer, num_layers)
+        self.enc = nn.Sequential(PatchEmbedding(patch_size, d_model, img_size=(1, 128, 1088)),
+                                 nn.TransformerEncoder(encoder_layer, num_layers)
                                 )
     
     def forward(self, x):
-        # temp = self.enc(x)
-        # print(temp.size())
         return self.enc(x)
 
 
@@ -304,7 +175,6 @@ class Decoder(nn.Module):
 
     def forward(self, src, tgt):
         # add the positional encoding to the input
-        # src = self.pos_encoder(src)
         tgt = self.embedding(tgt) * math.sqrt(self.d_model)
         tgt = self.pos_encoder(tgt)
 
@@ -321,18 +191,13 @@ class Decoder(nn.Module):
 
 class MathEquationConverter(nn.Module):
     def __init__(self, config_encoder, config_decoder, num_classes, max_len):
-        # print(config_decoder)
         super(MathEquationConverter, self).__init__()
-        # self.encoder = ViT(*(config_encoder.values()))
         self.encoder = Encoder(*(config_encoder.values()))
         self.decoder = Decoder(*(config_decoder.values()), num_classes, max_len)
         self.max_len = max_len
 
     def forward(self, x, y):
-        # pass the input through the encoder
         x = self.encoder(x)
-        # print("Encoder output: ", x.size())
-        # pass the output of the encoder through the decoder
         x = self.decoder(x, y)
         return x
     
