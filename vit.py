@@ -72,17 +72,24 @@ class ImagePositionalEncoding(nn.Module):
 
 
 class PatchEmbedding(nn.Module):
-    def __init__(self, patch_size, emb_size, img_size):
-        self.patch_size = patch_size
+    def __init__(self, 
+                 d_model: int = 256,
+                 patch_size: int = 16
+                ):
         super().__init__()
+        
+        # For an input image of (1 64 544) 
+        # Rearrange (B 1 (4x16) (34*16)) -> (B 1 4 34 (16x16x1))
+        # Linear layer (B 1 4 34 (16x16x1)) -> (B 1 4 34 128)
+        # Rearrange (B 1 4 34 128) -> (B 128 4 34)
         self.projection = nn.Sequential(Rearrange('b c (h s1) (w s2) -> b h w (s1 s2 c)', s1=patch_size, s2=patch_size),
-                                        nn.Linear(patch_size * patch_size * img_size[0], emb_size//2),
+                                        nn.Linear(patch_size * patch_size, d_model//2),
                                         Rearrange('b h w e -> b e h w')
                                        )
-        self.image_pos_enc = ImagePositionalEncoding(emb_size)
+        # Encoding (B 128 4 34) -> (B 256 4 34)
+        self.image_pos_enc = ImagePositionalEncoding(d_model)
 
     def forward(self, x: Tensor) -> Tensor:
-        b, _, _, _ = x.shape    # (B,E,H,W)
         x = self.projection(x)
         x = self.image_pos_enc( torch.cat( (x, x), dim=1 ) )
         x = x.view(x.size(0), x.size(1), -1).permute(0, 2, 1)
@@ -90,12 +97,23 @@ class PatchEmbedding(nn.Module):
 
 
 class Encoder(nn.Module):
-    def __init__(self, d_model: int, num_heads: int, num_layers: int, dim_feedforward: int, dropout: float, patch_size: int, activation_fn: str):
+    def __init__(self, 
+                 d_model: int, 
+                 nhead: int, 
+                 num_layers: int, 
+                 dim_feedforward: int, 
+                 dropout: float, 
+                 patch_size: int, 
+                 activation: str,
+                 batch_first: bool
+                ):
         super().__init__()
-        encoder_layer = nn.TransformerEncoderLayer(d_model, num_heads, dim_feedforward, dropout, activation_fn, batch_first=True)
+        # Create single encoder layer
+        encoder_layer = nn.TransformerEncoderLayer(d_model=d_model, nhead=nhead, dim_feedforward=dim_feedforward, dropout=dropout, activation=activation, batch_first=True)
 
-        self.enc = nn.Sequential(PatchEmbedding(patch_size, d_model, img_size=(1, 128, 1088)),
-                                 nn.TransformerEncoder(encoder_layer, num_layers)
+        # Create encoder architecture with patch embedding + num_layers*encoder_layer
+        self.enc = nn.Sequential(PatchEmbedding(d_model, patch_size),
+                                 nn.TransformerEncoder(encoder_layer, num_layers=num_layers)
                                 )
     
     def forward(self, x):
@@ -105,12 +123,20 @@ class Encoder(nn.Module):
 
 # define the transformer decoder
 class Decoder(nn.Module):
-    def __init__(self, d_model, num_heads, num_layers, dim_forward, dropout, num_classes, max_len):
+    def __init__(self, 
+                 d_model: int, 
+                 nhead: int, 
+                 num_layers: int,  
+                 dim_feedforward: int,  
+                 dropout: float,  
+                 num_classes: int, 
+                 max_len: int
+                ):
         super(Decoder, self).__init__()
         self.d_model = d_model
         self.pos_encoder = WordPositionalEncoding(d_model)
-        decoder_layer = nn.TransformerDecoderLayer(d_model, num_heads, dim_feedforward=dim_forward, dropout=dropout, batch_first=True)
-        self.transformer_decoder = nn.TransformerDecoder(decoder_layer, num_layers)
+        decoder_layer = nn.TransformerDecoderLayer(d_model=d_model, nhead=nhead, dim_feedforward=dim_feedforward, dropout=dropout, batch_first=True)
+        self.transformer_decoder = nn.TransformerDecoder(decoder_layer, num_layers=num_layers)
         self.fc = nn.Linear(d_model, num_classes)
 
         # generate the target mask
@@ -138,11 +164,14 @@ class Decoder(nn.Module):
 
 
 class MathEquationConverter(nn.Module):
-    def __init__(self, config_encoder, config_decoder, num_classes, max_len):
+    def __init__(self, 
+                 config_encoder: dict, 
+                 config_decoder: dict 
+                ):
         super(MathEquationConverter, self).__init__()
-        self.encoder = Encoder(*(config_encoder.values()))
-        self.decoder = Decoder(*(config_decoder.values()), num_classes, max_len)
-        self.max_len = max_len
+        self.encoder = Encoder(**config_encoder)
+        self.decoder = Decoder(**config_decoder)
+        self.max_len = config_decoder['max_len']
 
     def forward(self, x, y):
         x = self.encoder(x)

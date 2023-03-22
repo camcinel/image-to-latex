@@ -17,3 +17,7 @@ if __name__ == "__main__":
     exp = Experiment(exp_name)
     exp.run()
     exp.test()
+    
+    # housekeeping
+    gc.collect()
+    torch.cuda.empty_cache()

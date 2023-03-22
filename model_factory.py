@@ -2,19 +2,22 @@
 from vit import *
 
 def get_model(config_data, vocab):
-    # nhead = config_data['model']['nhead']
     model_type = config_data['model_type']
-    # layer_num = config_data["model"]["layer_num"]
-    # dropout = config_data["model"]["dropout"]
-    # dim_feedforward = config_data["model"]["dim_feedforward"]
     max_length = config_data["generation"]["max_length"]
     
-    if model_type == "baseline":
-        # embedding_size = config_data['model']['embedding_size']
-        model = MathEquationConverter(config_data["encoder"], config_data["decoder"], len(vocab), max_length)
-    
-    elif model_type == "ViT":
-        # print(config_data["encoder"])
-        model = MathEquationConverter(config_data['encoder'], config_data['decoder'], len(vocab), max_length)        
+    if model_type == "ViT":
+        
+        # pack config_data['decoder'], num_classes, max_len into a single dictionary
+        
+        model = MathEquationConverter(config_encoder=config_data['encoder'], 
+                                      config_decoder={
+                                          **config_data['decoder'], 
+                                          'num_classes': len(vocab), 
+                                          'max_len': max_length
+                                      }
+                                     )
+        
+    else:
+        raise ValueError(f" model type expected ViT, got {model_type}!")
     
     return model

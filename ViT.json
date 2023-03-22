@@ -19,26 +19,27 @@
   },
 
   "scheduler": {
-    "milestones": [],
+    "milestones": [40],
     "gamma": 0.5
 
   },
 
   "encoder": {
     "d_model": 256,
-    "num_heads": 4,
+    "nhead": 4,
     "num_layers": 4,
     "dim_feedforward": 2048,
     "dropout": 0.3,
     "patch_size": 16,
-    "activation_fn": "gelu"
+    "activation": "gelu",
+    "batch_first": true
   },
 
   "decoder": {
     "d_model": 256,
-    "num_heads": 4,
+    "nhead": 4,
     "num_layers": 3,
-    "dim_forward": 2048,
+    "dim_feedforward": 2048,
     "dropout": 0.3
   },
 
