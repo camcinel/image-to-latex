@@ -5,3 +5,4 @@ TRAIN_DATA_DIR = './dataset5/train56'
 VOCAB_DIR = './dataset5/step2'
 
 # Put your other constants here.
+CUDA_LAUNCH_BLOCKING=1
