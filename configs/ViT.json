@@ -13,13 +13,13 @@
     "num_workers": 8
   },
   "experiment": {
-    "num_epochs": 20,
+    "num_epochs": 60,
     "patience": 5,
     "learning_rate": 5e-5
   },
 
   "scheduler": {
-    "milestones": [30],
+    "milestones": [50],
     "gamma": 0.5
 
   },

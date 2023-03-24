@@ -2,8 +2,8 @@ import pandas as pd
 import numpy as np
 from torch.utils.data import DataLoader
 
-from vocab import load_vocab
-from make_dataset import *
+from utils.vocab import load_vocab
+from utils.make_dataset import *
 
 
 # Builds your datasets here based on the configuration.
