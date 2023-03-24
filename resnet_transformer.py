@@ -110,8 +110,7 @@ class MathEquationConverter_1(nn.Module):
 
         return output_indices
     
-    def predict_beamsearch(self, a):
-            B= 10 # beam width
+    def predict_beamsearch(self, a, B):
             x = self.encoder(a)
             l = self.max_len - 1
             A = x.size(0)
