@@ -1,17 +1,16 @@
 import matplotlib.pyplot as plt
 from matplotlib.patches import Rectangle
 import numpy as np
-import torch
 import torch.nn as nn
 import torch.optim as optim
 import copy
 from datetime import datetime
 
-from caption_utils import *
+from utils.caption_utils import *
 from constants import ROOT_STATS_DIR
-from dataset_factory import get_datasets
-from file_utils import *
-from model_factory import get_model
+from utils.dataset_factory import get_datasets
+from utils.file_utils import *
+from models.model_factory import get_model
 from torch.optim.lr_scheduler import CosineAnnealingLR
 
 

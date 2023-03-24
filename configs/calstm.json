@@ -15,6 +15,10 @@
     "num_epochs": 20,
     "learning_rate": 5e-4
   },
+  "scheduler": {
+    "milestones": [10],
+    "gamma": 0.5
+  },
   "model": {
     "hidden_size": 1500,
     "embedding_size": 300,
