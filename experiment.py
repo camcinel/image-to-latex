@@ -42,6 +42,7 @@ class Experiment(object):
 
         # Setup Experiment
         self.__generation_config = config_data['generation']
+        self.__beam_width = config_data['generation']["beam_width"]
         self.__epochs = config_data['experiment']['num_epochs']
         self.__milestones = config_data["scheduler"]["milestones"]
         self.__gamma = config_data["scheduler"]["gamma"]
@@ -165,7 +166,7 @@ class Experiment(object):
                           % (epoch, self.__epochs, loader_num, n_loaders, i, n_batches, training_loss / cnt))
                 if (i - 1) % 200 == 0:
                     print('Sample Captions:')
-                    captions, _ = self.__model.predict(images)
+                    captions, _ = self.__model.predict(images,self.__beam_width)
                     for idx, caption in enumerate(captions):
                         print(f'Caption {idx}')
                         print(' '.join(caption))
@@ -200,7 +201,7 @@ class Experiment(object):
                               % (epoch, self.__epochs, loader_num, n_loaders, i, n_batches, val_loss / cnt))
                     if (i - 1) % 200 == 0:
                         print('Sample Captions:')
-                        captions, _ = self.__model.predict(images)
+                        captions, _ = self.__model.predict(images, self.__beam_width)
                         for idx, caption in enumerate(captions):
                             print(f'Caption {idx}')
                             print(' '.join(caption))
@@ -235,7 +236,7 @@ class Experiment(object):
                     
                     cnt += images.size(0)
 
-                    output = self.__best_model.predict(images)
+                    output = self.__best_model.predict(images, self.__beam_width)
                     for j in range(images.size(0)):
                         # TODO: Implement actual captions retrieval
                         # actual_cap = [self.__vocab.idx2word[x.item()] for x in captions[j]]
