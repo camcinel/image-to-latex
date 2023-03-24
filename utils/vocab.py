@@ -7,7 +7,6 @@ class Vocabulary(object):
 
     def __init__(self, vocab_path):
         self.idx2word = pd.read_pickle(os.path.join(vocab_path, 'dict_id2word.pkl'))
-        self.idx2word[len(self.idx2word)] = '\pad'
         self.word2idx = {word: idx for idx, word in self.idx2word.items()}
 
     def __call__(self, word):
