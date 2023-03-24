@@ -149,9 +149,10 @@ class Experiment(object):
                 images = images.contiguous().to(self.device)                             
                 captions = captions.contiguous().to(self.device)
                 output = self.__model(images, captions).contiguous().to(self.device)
-                
-                output = output[:,:-1].contiguous().to(self.device)
-                captions = captions[:,1:].contiguous().to(self.device)                
+
+                if self.config_data['model']['model_type'] != 'calstm':
+                    output = output[:,:-1].contiguous().to(self.device)
+                    captions = captions[:,1:].contiguous().to(self.device)
                 
                 loss = self.__criterion(output.view(-1, len(self.__vocab)), captions.view(-1))
                 loss.backward()
@@ -187,9 +188,10 @@ class Experiment(object):
                     images = images.contiguous().to(self.device)
                     captions = captions.contiguous().to(self.device)
                     output = self.__model(images, captions).contiguous().to(self.device)
-                    
-                    output = output[:,:-1].contiguous().to(self.device)
-                    captions = captions[:,1:].contiguous().to(self.device) 
+
+                    if self.config_data['model']['model_type'] != 'calstm':
+                        output = output[:,:-1].contiguous().to(self.device)
+                        captions = captions[:,1:].contiguous().to(self.device)
                     
                     loss = self.__criterion(output.view(-1, len(self.__vocab)), captions.view(-1).to(self.device))
                     val_loss += loss * images.size(0)
@@ -226,10 +228,11 @@ class Experiment(object):
                     images = images.contiguous().to(self.device)
                     captions = captions.contiguous().to(self.device)
                     output_loss = self.__best_model(images, captions).contiguous().to(self.device)
-                    
-                    output_loss = output_loss[:,:-1].contiguous().to(self.device)
-                    
-                    captions = captions[:,1:].contiguous().to(self.device) 
+
+                    if self.config_data['model']['model_type'] != 'calstm':
+                        output_loss = output_loss[:,:-1].contiguous().to(self.device)
+
+                        captions = captions[:,1:].contiguous().to(self.device)
 
                     test_loss += self.__criterion(output_loss.view(-1, len(self.__vocab)), captions.view(-1)) * images.size(0)
                     
