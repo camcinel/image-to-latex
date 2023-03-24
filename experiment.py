@@ -196,7 +196,10 @@ class Experiment(object):
                     if self.__model_type != 'calstm':
                         output = self.__best_model.predict(images)
                     else:
-                        output = self.__best_model.predict(images, B = self.__beam_width)
+                        if self.__beam_width ==1:
+                            output = self.__best_model.predict(images)
+                        else:
+                            output = self.__best_model.predict_beamsearch(images, B = self.__beam_width)
                     for j in range(images.size(0)):
                         actual_cap = remove([self.__vocab.idx2word[x.item()] for x in captions[j]])
                         if self.__model_type != 'calstm':
