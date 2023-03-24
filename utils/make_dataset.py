@@ -27,6 +27,7 @@ class MyDataset(data.Dataset):
         self.normalize = transforms.Normalize(mean=[5.96457], std=[38.54074])
 
 
+
     def __getitem__(self, index):
         """Returns one data pair (image and caption)."""
         path = self.meta['image'][index]
@@ -35,18 +36,29 @@ class MyDataset(data.Dataset):
         
         # add the start token.
         target = torch.tensor([1] + target, dtype=torch.long)
-
-        # TODO: add normalization, change the padding for centering the image.
         image = Image.open(os.path.join(self.root, path)).convert('RGBA').getchannel("A")
-        image = np.array(image)
+        image = np.array(image) / 255
         image = torch.tensor(image, dtype=torch.float32)
         n, m = image.shape
-        a, b = (self.img_size[1] - m) // 2, (self.img_size[0] - n) // 2
+
+        # Random Resize
+        max_h = self.img_size[0]
+        max_w = self.img_size[1]
+        max_scale = min(max_h / n, max_w / m, 1.4)
+
+        ratio = np.random.uniform(0.8, max_scale)
+        n, m = int(n*ratio), int(m*ratio)
+
+        image = image.unsqueeze(0)
+
+        #a, b = np.random.randint(0, max_w-m+1), np.random.randint(0, max_h-n+1)
+        a, b = (max_w-m) // 2, (max_h-n) // 2
         transform = transforms.Compose([
-            transforms.Pad( (a, b, self.img_size[1]-m-a, self.img_size[0]-n-b), fill=0, padding_mode='constant'),
+            transforms.Resize( (n, m) ),
+            transforms.Pad( (a, b, max_w-m-a, max_h-n-b), fill=0, padding_mode='constant'),
         ])
-        image = transform(image).unsqueeze(0)
-        image = self.normalize(image)
+        image = transform(image)
+        
         return image, target
 
     def __len__(self):

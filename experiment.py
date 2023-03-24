@@ -4,6 +4,7 @@ import numpy as np
 import torch.nn as nn
 import torch.optim as optim
 import copy
+import json
 from datetime import datetime
 
 from utils.caption_utils import *
@@ -13,6 +14,7 @@ from utils.file_utils import *
 from models.model_factory import get_model
 from torch.optim.lr_scheduler import CosineAnnealingLR
 
+from tqdm import tqdm
 
 # Class to encapsulate a neural experiment.
 # The boilerplate code to setup the experiment, log stats, checkpoints and plotting have been provided to you.
@@ -26,14 +28,14 @@ def unormalize(tensor, mean=[5.96457], std=[38.54074]):
 
 class Experiment(object):
     def __init__(self, name):
-        config_data = read_file_in_dir('./', name + '.json')
+        config_data = read_file_in_dir('./configs/', name + '.json')
         if config_data is None:
             raise Exception("Configuration file doesn't exist: s", name)
 
         self.__name = config_data['experiment_name']
         self.__experiment_dir = os.path.join(ROOT_STATS_DIR, self.__name)
-        self.device = torch.device('cuda' if torch.has_cuda else 'cpu')
-
+        self.device =  torch.device('cuda' if torch.has_cuda else 'cpu')
+        self.config_data = config_data
         # Load Datasets
         self.__vocab, self.__train_loaders, self.__val_loaders, self.__test_loaders = get_datasets(
             config_data)
@@ -41,6 +43,8 @@ class Experiment(object):
         # Setup Experiment
         self.__generation_config = config_data['generation']
         self.__epochs = config_data['experiment']['num_epochs']
+        self.__milestones = config_data["scheduler"]["milestones"]
+        self.__gamma = config_data["scheduler"]["gamma"]
         self.__current_epoch = 0
         self.__training_losses = []
         self.__val_losses = []
@@ -62,7 +66,7 @@ class Experiment(object):
 
         self.__init_model()
 
-        self.scheduler = CosineAnnealingLR(self.__optimizer, T_max=self.__epochs, eta_min=0)
+        self.scheduler = torch.optim.lr_scheduler.MultiStepLR(self.__optimizer, milestones=self.__milestones, gamma=self.__gamma)
 
         # Load Experiment Data if available
         self.__load_experiment()
@@ -71,6 +75,7 @@ class Experiment(object):
     def __load_experiment(self):
         os.makedirs(ROOT_STATS_DIR, exist_ok=True)
 
+        
         if os.path.exists(self.__experiment_dir):
             self.__training_losses = read_file_in_dir(self.__experiment_dir, 'training_losses.json')
             self.__val_losses = read_file_in_dir(self.__experiment_dir, 'val_losses.json')
@@ -84,6 +89,9 @@ class Experiment(object):
 
         else:
             os.makedirs(self.__experiment_dir)
+            write_to_file_in_dir(self.__experiment_dir, 'config.json', self.config_data)
+            
+
 
     def __init_model(self):
         if torch.cuda.is_available():
@@ -94,26 +102,43 @@ class Experiment(object):
     def run(self):
         start_epoch = self.__current_epoch
         cur_patience = 0
+        best_loss = np.inf
+
         for epoch in range(start_epoch, self.__epochs):  # loop over the dataset multiple times
             start_time = datetime.now()
             self.__current_epoch = epoch
-            train_loss = self.__train(epoch)
-            val_loss = self.__val(epoch)
-            if self.__val_losses and val_loss > self.__val_losses[-1]:
-                cur_patience += 1
-            else:
-                cur_patience = 0
+            train_loss = self.__train()
+            val_loss = self.__val()
+            
+            # if self.__val_losses and val_loss > self.__val_losses[-1]:
+            #     cur_patience += 1
+            # else:
+            #     cur_patience = 0
+            
             self.__record_stats(train_loss, val_loss)
             self.__log_epoch_stats(start_time)
             self.__save_model()
-            if cur_patience >= self.__patience:
-                print(f'Early Stopped at: {epoch}!')
+
+            if val_loss < best_loss:
+                best_loss = val_loss
+                self.__best_model = self.__model
+                cur_patience = 0
+            else:
+                cur_patience += 1
+
+            if cur_patience == self.__patience:
+                self.__model = self.__best_model
+                print(f'Early stopping after {epoch} epochs')
                 break
+
+            # if cur_patience >= self.__patience:
+            #     print(f'Early Stopped at: {epoch}!')
+            #     break
 
     # Perform one training iteration on the whole dataset and return loss value
     def __train(self, epoch):
         self.__model.train()
-        training_loss = cnt = 0
+        training_loss = cnt = 0        
 
         # Iterate over the data, implement the training function
         n_loaders = len(self.__train_loaders)
@@ -121,13 +146,14 @@ class Experiment(object):
             n_batches = len(data)
             for i, (images, captions) in enumerate(data):
                 self.__optimizer.zero_grad()
-
-                images = images.to(self.device)
-                captions = captions.to(self.device)
-
-                output = self.__model(images, captions)
-
-                loss = self.__criterion(output.transpose(1, 2), captions)
+                images = images.contiguous().to(self.device)                             
+                captions = captions.contiguous().to(self.device)
+                output = self.__model(images, captions).contiguous().to(self.device)
+                
+                output = output[:,:-1].contiguous().to(self.device)
+                captions = captions[:,1:].contiguous().to(self.device)                
+                
+                loss = self.__criterion(output.view(-1, len(self.__vocab)), captions.view(-1))
                 loss.backward()
                 self.__optimizer.step()
 
@@ -158,14 +184,14 @@ class Experiment(object):
             for loader_num, data in enumerate(self.__val_loaders):
                 n_batches = len(data)
                 for i, (images, captions) in enumerate(data):
-
-                    images = images.to(self.device)
-                    captions = captions.to(self.device)
-
-                    output = self.__model(images, captions)
-
-                    loss = self.__criterion(output.transpose(1, 2), captions)
-
+                    images = images.contiguous().to(self.device)
+                    captions = captions.contiguous().to(self.device)
+                    output = self.__model(images, captions).contiguous().to(self.device)
+                    
+                    output = output[:,:-1].contiguous().to(self.device)
+                    captions = captions[:,1:].contiguous().to(self.device) 
+                    
+                    loss = self.__criterion(output.view(-1, len(self.__vocab)), captions.view(-1).to(self.device))
                     val_loss += loss * images.size(0)
                     cnt += images.size(0)
 
@@ -197,23 +223,27 @@ class Experiment(object):
         with torch.no_grad():
             for data in self.__test_loaders:
                 for iter, (images, captions) in enumerate(data):
-                    images = images.to(self.device)
-                    captions = captions.to(self.device)
-                    output = self.__best_model(images, captions)
-                    test_loss += self.__criterion(output.transpose(1, 2), captions)
+                    images = images.contiguous().to(self.device)
+                    captions = captions.contiguous().to(self.device)
+                    output_loss = self.__best_model(images, captions).contiguous().to(self.device)
+                    
+                    output_loss = output_loss[:,:-1].contiguous().to(self.device)
+                    
+                    captions = captions[:,1:].contiguous().to(self.device) 
+
+                    test_loss += self.__criterion(output_loss.view(-1, len(self.__vocab)), captions.view(-1)) * images.size(0)
+                    
                     cnt += images.size(0)
 
-                    pred_captions, _ = self.__best_model.predict(images)
-                    for actual_cap, pred_cap in zip(captions, pred_captions):
-                        actual_cap = actual_cap.tolist()
-                        actual_cap = remove([self.__vocab.idx2word[x] for x in actual_cap])
-                        pred_cap = remove(pred_cap)
-                        _bleu1 += bleu1([actual_cap], pred_cap)
-                        _bleu4 += bleu4([actual_cap], pred_cap)
-
-                    if iter % 10 == 0:
-                        print(f'Actual caption: {" ".join(actual_cap)}')
-                        print(f'Predicted caption: {" ".join(pred_cap)}')
+                    output = self.__best_model.predict(images)
+                    for j in range(images.size(0)):
+                        # TODO: Implement actual captions retrieval
+                        # actual_cap = [self.__vocab.idx2word[x.item()] for x in captions[j]]
+                        # output_cap = get_caption(output[j], self.__vocab, self.__generation_config)
+                        actual_cap = remove([self.__vocab.idx2word[x.item()] for x in captions[j]])
+                        output_cap = remove(get_caption(output[j], self.__vocab, self.__generation_config))
+                        _bleu1 += bleu1([actual_cap], output_cap)
+                        _bleu4 += bleu4([actual_cap], output_cap)
 
         _bleu1 /= cnt
         _bleu4 /= cnt
@@ -221,6 +251,10 @@ class Experiment(object):
 
         result_str = "Test Performance: Loss: {}, Bleu1: {}, Bleu4: {}".format(test_loss, _bleu1, _bleu4)
         self.__log(result_str)
+        print(f'The actual cap is: {actual_cap} The prediction is:{output_cap}')
+        print(output_loss.shape)
+        # print(f'teacher forcing preds: {get_caption(torch.argmax(output_loss[-1],dim=-1), self.__vocab, self.__generation_config)}' )
+        print(f'teacher forcing preds: {remove(get_caption(torch.argmax(output_loss[-1],dim=-1), self.__vocab, self.__generation_config))}' )
 
         return test_loss, _bleu1, _bleu4
 
@@ -271,21 +305,9 @@ class Experiment(object):
         plt.legend(loc='best')
         plt.title(self.__name + " Stats Plot")
         plt.savefig(os.path.join(self.__experiment_dir, "stat_plot.png"))
-
-    def temp_tests(self, temps):
-        self.__best_model.decoder.temperature = 0.1
-        init_temp = self.__best_model.decoder.temperature
-        temp_res = []
-        for temp in temps:
-            print(f'Testing at temperature {temp}')
-            self.__best_model.decoder.temperature = temp
-            loss, _bleu1, _bleu4 = self.test()
-            res = (temp, loss, _bleu1, _bleu4)
-            temp_res.append(res)
-        for res in temp_res:
-            print('Temperature: %.e\tLoss: %.5f\tBLEU 1: %.5f\t BLEU 4: %.5f' % res)
-        self.__best_model.decoder.temperature = init_temp
-        return temp_res
+        plt.show(block=False)
+        plt.pause(3)
+        plt.close()  
 
     def give_attention_image(self, name='attentions'):
         brackets = {'[', ']', '(', ')', '{', '}'}

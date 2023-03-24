@@ -14,18 +14,16 @@ def bleu1(reference_captions, predicted_caption):
     return 100 * sentence_bleu(reference_captions, predicted_caption,
                                weights=(1, 0, 0, 0), smoothing_function=SmoothingFunction().method1)
 
-
 def bleu4(reference_captions, predicted_caption):
     return 100 * sentence_bleu(reference_captions, predicted_caption,
                                weights=(0, 0, 0, 1), smoothing_function=SmoothingFunction().method1)
-
 
 def get_caption(output, vocab, config):
     max_length = config['max_length']
     pred = output.data[:max_length]
     return [vocab.idx2word[idx.item()] for idx in pred]
 
-
 def remove(captions):
     special_token = {'\pad', '\\bos', '\eos'}
     return [x for x in captions if x not in special_token]
+    
