@@ -26,6 +26,7 @@
     "model_type": "resnet_transformer"
   },
   "generation": {
-    "max_length": 152
+    "max_length": 152,
+    "beam_width": 1
   }
 }
