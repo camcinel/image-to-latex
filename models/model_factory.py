@@ -1,8 +1,9 @@
 # Build and return the model here based on the configuration.
-from resnet_transformer import *
-from vit import *
-from calstm import ImageToLatex
-from resnet_gc import *
+from .modules.resnet_transformer import MathEquationConverter as RT_MEC
+from .modules.vit import MathEquationConverter as VIT_MEC
+from .modules.calstm import ImageToLatex
+from .modules.resnet_gc import MathEquationConverter as RGC_MEC
+from .utils.summary_utils import ModelSummary as summary
 
 def get_model(config_data, vocab):
     model_type = config_data['model']['model_type']
@@ -14,12 +15,12 @@ def get_model(config_data, vocab):
         dim_feedforward = config_data["model"]["dim_feedforward"]
         max_length = config_data["generation"]["max_length"]
         embedding_size = config_data['model']['embedding_size']
-        model = MathEquationConverter_1(embedding_size, nhead, layer_num, dim_feedforward, dropout, len(vocab), max_length)
+        model = RT_MEC(embedding_size, nhead, layer_num, dim_feedforward, dropout, len(vocab), max_length)
 
-    elif model_type == "ViT":
+    elif model_type == "vit":
         # pack config_data['decoder'], num_classes, max_len into a single dictionary
         max_length = config_data["generation"]["max_length"]
-        model = MathEquationConverter_2(config_encoder=config_data['encoder'], 
+        model = VIT_MEC(config_encoder=config_data['encoder'], 
                         config_decoder={
                             **config_data['decoder'],
                             'num_classes': len(vocab),
@@ -33,7 +34,7 @@ def get_model(config_data, vocab):
         dim_feedforward = config_data["model"]["dim_feedforward"]
         max_length = config_data["generation"]["max_length"]
         embedding_size = config_data['model']['embedding_size']
-        model = MathEquationConverter_3(embedding_size, nhead, layer_num, dim_feedforward, dropout, len(vocab), max_length)
+        model = RGC_MEC(embedding_size, nhead, layer_num, dim_feedforward, dropout, len(vocab), max_length)
 
     elif model_type == "calstm":
         hidden_size = config_data['model']['hidden_size']
@@ -47,5 +48,7 @@ def get_model(config_data, vocab):
 
     else:
         raise ValueError(f" Unexpected model type {model_type}!")
+        
+    summary(model)() # print model summary
         
     return model

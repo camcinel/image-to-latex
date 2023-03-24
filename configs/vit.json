@@ -1,5 +1,5 @@
 {
-  "experiment_name": "ViT_experiment",
+  "experiment_name": "vit_experiment",
   "dataset": {
     "train_data_dir": "./dataset5/training_56/df_train.pkl",
     "val_data_dir": "./dataset5/training_56/df_valid.pkl",
@@ -12,13 +12,13 @@
     "num_workers": 8
   },
   "experiment": {
-    "num_epochs": 20,
+    "num_epochs": 50,
     "patience": 5,
     "learning_rate": 5e-5
   },
 
   "model": {
-    "model_type": "ViT"
+    "model_type": "vit"
   },
 
   "encoder": {

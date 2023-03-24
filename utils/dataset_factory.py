@@ -2,8 +2,8 @@ import pandas as pd
 import numpy as np
 from torch.utils.data import DataLoader
 
-from vocab import load_vocab
-from make_dataset import *
+from .vocab import load_vocab
+from .make_dataset import *
 
 
 # Builds your datasets here based on the configuration.
@@ -29,7 +29,7 @@ def get_dataloader(imgs_root_dir, meta_data_path, config_data):
     # np.random.seed(140)
     # torch.manual_seed(140)
     np.random.shuffle(padded_lengths)
-    # padded_lengths = padded_lengths[:2]
+#     padded_lengths = padded_lengths[0:1]
     for padded_length in padded_lengths:
         data = meta_data[meta_data['padded_seq_len'] == padded_length]
         dataset = MyDataset(root=imgs_root_dir,

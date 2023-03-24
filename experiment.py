@@ -7,11 +7,11 @@ import copy
 import json
 from datetime import datetime
 
-from caption_utils import *
+from utils.caption_utils import *
 from constants import ROOT_STATS_DIR
-from dataset_factory import get_datasets
-from file_utils import *
-from model_factory import get_model
+from utils.dataset_factory import get_datasets
+from utils.file_utils import *
+from models.model_factory import get_model
 from torch.optim.lr_scheduler import CosineAnnealingLR
 
 
@@ -19,7 +19,7 @@ from torch.optim.lr_scheduler import CosineAnnealingLR
 # The boilerplate code to setup the experiment, log stats, checkpoints and plotting.
 class Experiment(object):
     def __init__(self, name):
-        config_data = read_file_in_dir('./', name + '.json')
+        config_data = read_file_in_dir('./configs/', name + '.json')
         if config_data is None:
             raise Exception("Configuration file doesn't exist: s", name)
 

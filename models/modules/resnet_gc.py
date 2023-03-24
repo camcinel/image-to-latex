@@ -2,8 +2,8 @@ import torch
 import torchvision
 import math
 import torch.nn as nn
-from context_block import ContextBlock as cb
-from position_encoding import WordPositionalEncoding, ImagePositionalEncoding
+from ..utils.context_block import ContextBlock as cb
+from ..utils.position_encoding import WordPositionalEncoding, ImagePositionalEncoding
 
 
 # define the encoder using a ResNet-18 backbone
@@ -81,9 +81,9 @@ class Decoder(nn.Module):
 
 
 
-class MathEquationConverter_3(nn.Module):
+class MathEquationConverter(nn.Module):
     def __init__(self, d_model, num_heads, num_layers, dim_forward, dropout, num_classes, max_len):
-        super(MathEquationConverter_3, self).__init__()
+        super().__init__()
         self.encoder = Encoder(d_model)
         self.decoder = Decoder(d_model, num_heads, num_layers, dim_forward, dropout, num_classes, max_len)
         self.max_len = max_len

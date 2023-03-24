@@ -2,7 +2,7 @@ import torch
 import torchvision
 import math
 import torch.nn as nn
-from position_encoding import WordPositionalEncoding, ImagePositionalEncoding
+from ..utils.position_encoding import WordPositionalEncoding, ImagePositionalEncoding
 
 # Some code adapted from https://github.com/kingyiusuen/image-to-latex.
 # We changed 2D position encoding and some layers of the network.
@@ -70,9 +70,9 @@ class Decoder(nn.Module):
 
 
 
-class MathEquationConverter_1(nn.Module):
+class MathEquationConverter(nn.Module):
     def __init__(self, d_model, num_heads, num_layers, dim_forward, dropout, num_classes, max_len):
-        super(MathEquationConverter_1, self).__init__()
+        super().__init__()
         self.encoder = Encoder(d_model)
         self.decoder = Decoder(d_model, num_heads, num_layers, dim_forward, dropout, num_classes, max_len)
         self.max_len = max_len

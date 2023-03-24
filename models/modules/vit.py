@@ -2,7 +2,7 @@ import torch
 import math
 from torch import nn, Tensor
 from einops.layers.torch import Rearrange
-from position_encoding import ImagePositionalEncoding, WordPositionalEncoding
+from ..utils.position_encoding import ImagePositionalEncoding, WordPositionalEncoding
 
 class PatchEmbedding(nn.Module):
     def __init__(self, 
@@ -96,7 +96,7 @@ class Decoder(nn.Module):
 
 
 
-class MathEquationConverter_2(nn.Module):
+class MathEquationConverter(nn.Module):
     def __init__(self, 
                  config_encoder: dict, 
                  config_decoder: dict 
