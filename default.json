@@ -31,6 +31,7 @@
     "model_type": "baseline"
   },
   "generation": {
-    "max_length": 152
+    "max_length": 152,
+    "beam_width": 1
   }
 }
