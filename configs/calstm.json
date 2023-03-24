@@ -29,6 +29,7 @@
   "generation": {
     "max_length": 150,
     "deterministic": false,
-    "temperature": 0.1
+    "temperature": 0.1,
+    "beam_width": 5
   }
 }
