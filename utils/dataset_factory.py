@@ -1,7 +1,6 @@
 import pandas as pd
 import numpy as np
 from torch.utils.data import DataLoader
-
 from utils.vocab import load_vocab
 from utils.make_dataset import *
 
@@ -36,7 +35,6 @@ def get_coco_dataloader(imgs_root_dir, meta_data_path, config_data):
                             meta_data=data,
                             img_size=(config_data['dataset']['img_h'], config_data['dataset']['img_w'])
                             )
-    
         loaders.append( DataLoader(dataset=dataset,
                         batch_size=config_data['dataset']['batch_size'],
                         shuffle=True,

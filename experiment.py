@@ -1,6 +1,6 @@
 import matplotlib.pyplot as plt
+from matplotlib.patches import Rectangle
 import numpy as np
-import torch
 import torch.nn as nn
 import torch.optim as optim
 import copy
@@ -20,6 +20,12 @@ from tqdm import tqdm
 # The boilerplate code to setup the experiment, log stats, checkpoints and plotting have been provided to you.
 # You only need to implement the main training logic of your experiment and implement train, val and test methods.
 # You are free to modify or restructure the code as per your convenience.
+def unormalize(tensor, mean=[5.96457], std=[38.54074]):
+    for t, m, s in zip(tensor, mean, std):
+        t.mul_(s).add_(m)
+    return tensor
+
+
 class Experiment(object):
     def __init__(self, name):
         config_data = read_file_in_dir('./configs/', name + '.json')
@@ -46,15 +52,17 @@ class Experiment(object):
             self.__patience = config_data['experiment']['patience']
         else:
             self.__patience = 5
-            
+
         # Init Model
         self.__model = get_model(config_data, self.__vocab).to(self.device)
 
-        self.__best_model = copy.deepcopy(self.__model)  # Save your best model in this field and use this in test method.
-    
-        #Set these Criterion and Optimizers Correctly
+        self.__best_model = copy.deepcopy(
+            self.__model)  # Save your best model in this field and use this in test method.
+
+        # Set these Criterion and Optimizers Correctly
         self.__criterion = nn.CrossEntropyLoss()
-        self.__optimizer = optim.Adam(self.__model.parameters(), lr=config_data['experiment']['learning_rate'])
+        self.__optimizer = optim.Adam(self.__model.parameters(), lr=config_data['experiment']['learning_rate'],
+                                      weight_decay=5e-5)
 
         self.__init_model()
 
@@ -128,12 +136,14 @@ class Experiment(object):
             #     break
 
     # Perform one training iteration on the whole dataset and return loss value
-    def __train(self):
+    def __train(self, epoch):
         self.__model.train()
         training_loss = cnt = 0        
 
         # Iterate over the data, implement the training function
-        for data in self.__train_loaders:
+        n_loaders = len(self.__train_loaders)
+        for loader_num, data in enumerate(self.__train_loaders):
+            n_batches = len(data)
             for i, (images, captions) in enumerate(data):
                 self.__optimizer.zero_grad()
                 images = images.contiguous().to(self.device)                             
@@ -146,19 +156,33 @@ class Experiment(object):
                 loss = self.__criterion(output.view(-1, len(self.__vocab)), captions.view(-1))
                 loss.backward()
                 self.__optimizer.step()
+
                 training_loss += loss * images.size(0)
                 cnt += images.size(0)
+
+                if i % 10 == 0:
+                    print('Train:\t[%d/%d]\t[%d/%d]\t[%d/%d]\tAverage Loss: %.4f'
+                          % (epoch, self.__epochs, loader_num, n_loaders, i, n_batches, training_loss / cnt))
+                if (i - 1) % 200 == 0:
+                    print('Sample Captions:')
+                    captions, _ = self.__model.predict(images)
+                    for idx, caption in enumerate(captions):
+                        print(f'Caption {idx}')
+                        print(' '.join(caption))
+
             self.scheduler.step()
         training_loss /= cnt
         return training_loss
 
     # Perform one Pass on the validation set and return loss value. You may also update your best model here.
-    def __val(self):
+    def __val(self, epoch):
         self.__model.eval()
         val_loss = cnt = 0
 
         with torch.no_grad():
-            for data in self.__val_loaders:
+            n_loaders = len(self.__val_loaders)
+            for loader_num, data in enumerate(self.__val_loaders):
+                n_batches = len(data)
                 for i, (images, captions) in enumerate(data):
                     images = images.contiguous().to(self.device)
                     captions = captions.contiguous().to(self.device)
@@ -170,12 +194,22 @@ class Experiment(object):
                     loss = self.__criterion(output.view(-1, len(self.__vocab)), captions.view(-1).to(self.device))
                     val_loss += loss * images.size(0)
                     cnt += images.size(0)
-        
+
+                    if i % 10 == 0:
+                        print('Val\t[%d/%d]\t[%d/%d]\t[%d/%d]\tAverage Loss: %.4f'
+                              % (epoch, self.__epochs, loader_num, n_loaders, i, n_batches, val_loss / cnt))
+                    if (i - 1) % 200 == 0:
+                        print('Sample Captions:')
+                        captions, _ = self.__model.predict(images)
+                        for idx, caption in enumerate(captions):
+                            print(f'Caption {idx}')
+                            print(' '.join(caption))
+
         val_loss /= cnt
         if not self.__val_losses or val_loss < min(self.__val_losses):
             self.__save_best_model()
             self.__best_model = copy.deepcopy(self.__model)
-        
+
         return val_loss
 
     #  Implement your test function here. Generate sample captions and evaluate loss and
@@ -214,7 +248,7 @@ class Experiment(object):
         _bleu1 /= cnt
         _bleu4 /= cnt
         test_loss /= cnt
-                
+
         result_str = "Test Performance: Loss: {}, Bleu1: {}, Bleu4: {}".format(test_loss, _bleu1, _bleu4)
         self.__log(result_str)
         print(f'The actual cap is: {actual_cap} The prediction is:{output_cap}')
@@ -273,4 +307,41 @@ class Experiment(object):
         plt.savefig(os.path.join(self.__experiment_dir, "stat_plot.png"))
         plt.show(block=False)
         plt.pause(3)
-        plt.close()        
+        plt.close()  
+
+    def give_attention_image(self, name='attentions'):
+        brackets = {'[', ']', '(', ')', '{', '}'}
+
+        with torch.no_grad():
+            image, _ = next(iter(self.__test_loaders[0]))
+            image = image.to(device=self.device)
+
+            self.__best_model.set_determinism(True)
+            captions, alphas = self.__best_model.predict(image[0].unsqueeze(0))
+            self.__best_model.set_determinism(False)
+
+            caption, alphas, image = captions[0], alphas.squeeze(0), image[0]
+            image = 255 - unormalize(image).to(device='cpu').squeeze(0)
+
+            no_bracket_idx = [x for x in range(len(caption)) if caption[x] not in brackets]
+            n = len(no_bracket_idx)
+            n_rows = (n + 1) // 2
+            n_cols = 2
+
+            H = 4  # height of feature receptive fields
+            W = 34  # width of feature receptive fields
+            S = 32  # shrink factor (2 ** 5)
+
+            fig, axes = plt.subplots(nrows=n_rows, ncols=n_cols, figsize=(n_cols * 10, n_rows * 4))
+            for i in range(n):
+                h1, w1 = divmod(i, 2)  # coordinates for subplot
+                axes[h1, w1].imshow(image, cmap='gray')
+                axes[h1, w1].set_title(caption[no_bracket_idx[i]])
+                for j in range(len(alphas[i])):
+                    h2, w2 = divmod(j, W)  # coordinates for attention square
+                    patch = Rectangle((S * w2, S * h2), S, S, edgecolor='none', facecolor='r',
+                                      alpha=alphas[no_bracket_idx[i], j].item())
+                    axes[h1, w1].add_patch(patch)
+            plt.savefig(os.path.join(self.__experiment_dir, name + '.png'))
+            plt.show()
+            plt.close()
