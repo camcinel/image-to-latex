@@ -1,0 +1,31 @@
+{
+  "experiment_name": "calstm_experiment",
+  "dataset": {
+    "train_data_dir": "./dataset5/training_56/df_train.pkl",
+    "val_data_dir": "./dataset5/training_56/df_valid.pkl",
+    "test_data_dir": "./dataset5/training_56/df_test.pkl",
+    "images_root_dir": "./dataset5/formula_images/",
+    "vocab_dir": "./dataset5/step2/",
+    "img_h": 128,
+    "img_w": 1088,
+    "batch_size": 16,
+    "num_workers": 2
+  },
+  "experiment": {
+    "num_epochs": 10,
+    "learning_rate": 5e-5,
+    "beam_width": 5
+  },
+  "model": {
+    "hidden_size": 1500,
+    "embedding_size": 300,
+    "layer_num": 2,
+    "model_type": "calstm",
+    "keep_image": false
+  },
+  "generation": {
+    "max_length": 150,
+    "deterministic": false,
+    "temperature": 0.1
+  }
+}
