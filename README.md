@@ -12,7 +12,7 @@ Image tp Latex final project for CSE-251B in UCSD, four models implemented. Best
 Three models are implemented in this projects:
 * CALSTM network, the sample config is `calstm.json`
 * ResNet-Transformer network, the sample config is `resnet_transformer.json`, it's the default config.
-* ViT network, the sample config is `ViT.json`
+* ViT network, the sample config is `vit.json`
 * ResNet-GlobalContext, the sample config is `resnet_gc.json`
 
 ## Files
