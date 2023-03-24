@@ -35,6 +35,7 @@ class Experiment(object):
 
         # Setup Experiment
         self.__generation_config = config_data['generation']
+        self.__beam_width = config_data['generation']['beam_width']
         self.__epochs = config_data['experiment']['num_epochs']
         self.__milestones = config_data["scheduler"]["milestones"]
         self.__gamma = config_data["scheduler"]["gamma"]
@@ -182,8 +183,11 @@ class Experiment(object):
                     test_loss += self.__criterion(output_loss.view(-1, len(self.__vocab)), captions.view(-1)) * images.size(0)
                     
                     cnt += images.size(0)
-
-                    output = self.__best_model.predict(images)
+                    
+                    if self.__beam_width ==1:
+                        output = self.__best_model.predict(images)
+                    else:
+                        output = self.__best_model.predict_beamsearch(images, self.__beam_width)
                     for j in range(images.size(0)):
                         # TODO: Implement actual captions retrieval
                         actual_cap = remove([self.__vocab.idx2word[x.item()] for x in captions[j]])
