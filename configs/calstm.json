@@ -30,6 +30,6 @@
     "max_length": 150,
     "deterministic": false,
     "temperature": 0.1,
-    "beam_width": 5
+    "beam_width": 1
   }
 }
