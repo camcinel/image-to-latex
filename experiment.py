@@ -1,4 +1,5 @@
 import matplotlib.pyplot as plt
+
 import numpy as np
 import torch
 import torch.nn as nn
@@ -14,9 +15,9 @@ from utils.file_utils import *
 from models.model_factory import get_model
 from torch.optim.lr_scheduler import CosineAnnealingLR
 
-
 # Class to encapsulate a neural experiment adpapted from PA4.
 # The boilerplate code to setup the experiment, log stats, checkpoints and plotting.
+
 class Experiment(object):
     def __init__(self, name):
         config_data = read_file_in_dir('./configs/', name + '.json')
@@ -101,6 +102,7 @@ class Experiment(object):
             self.__current_epoch = epoch
             train_loss = self.__train()
             val_loss = self.__val()
+
             if self.__val_losses and val_loss > self.__val_losses[-1]:
                 cur_patience += 1
             else:
@@ -142,10 +144,12 @@ class Experiment(object):
 
     # Perform one Pass on the validation set and return loss value. You may also update your best model here.
     def __val(self):
+
         self.__model.eval()
         val_loss = cnt = 0
 
         with torch.no_grad():
+
             for data in self.__val_loaders:
                 for i, (images, captions) in enumerate(data):
                     images = images.contiguous().to(self.device)
@@ -169,7 +173,6 @@ class Experiment(object):
         if not self.__val_losses or val_loss < min(self.__val_losses):
             self.__save_best_model()
             self.__best_model = copy.deepcopy(self.__model)
-        
         return val_loss
 
     #  Implement your test function here. Generate sample captions and evaluate loss and
@@ -186,6 +189,7 @@ class Experiment(object):
                     images = images.contiguous().to(self.device)
                     captions = captions.contiguous().to(self.device)
                     output_loss = self.__best_model(images, captions).contiguous().to(self.device)
+                    
                     if self.__model_type != 'calstm':
                         output_loss = output_loss[:,:-1].contiguous().to(self.device)
                         captions = captions[:,1:].contiguous().to(self.device)

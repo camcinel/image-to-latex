@@ -25,7 +25,7 @@ class MyDataset(data.Dataset):
         # reindex the meta data.
         self.meta.index = range(self.meta.shape[0])
         self.img_size = img_size
-
+        self.normalize = transforms.Normalize(mean=[5.96457], std=[38.54074])
 
     def __getitem__(self, index):
         """Returns one data pair (image and caption)."""
@@ -35,7 +35,6 @@ class MyDataset(data.Dataset):
         
         # add the start token.
         target = torch.tensor([1] + target, dtype=torch.long)
-
         image = Image.open(os.path.join(self.root, path)).convert('RGBA').getchannel("A")
         image = np.array(image) / 255
         image = torch.tensor(image, dtype=torch.float32)
