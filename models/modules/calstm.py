@@ -141,16 +141,26 @@ class Decoder(nn.Module):
 
         return output
 
-    def predict_beam(self, a, hidden, B):  # USING BEAM SEARCH
-        l = self.max_length
-        A = a.size(0)
-        prev_words = [None] * B
-        prev_probs_id = [torch.ones(B)] * a.size(0)
-        prev_probs = torch.stack(prev_probs_id).cuda()
+def predict_beamsearch(self, a, hidden, B):
+        l = self.max_length #maximum caption output length
+        A = a.size(0) # number of batches
+        H = hidden[0].size(2) #size of the hidden layers
 
-        old_captions = []
-        add_more = []
-        for _ in range(A):  # initializing the captions and add_more word tracker lists
+        prev_words = [None] * B  # initialize the previous word list
+        alphas = [None]*B  #initialize the self-attention list
+
+        prev_probs_id = [torch.zeros(B)] * a.size(0) # log(prob) neutral value is 0.
+        prev_probs = torch.stack(prev_probs_id).cuda() # A x B
+
+        # **** hidden is a tuple of 2 of tensors with dim [2, A, H]
+        beam_deep_hidden = torch.stack( [ torch.stack(hidden) ] * B )
+        beam_deep_hidden = torch.permute(beam_deep_hidden, (0, 3 , 1, 2 , 4) )
+        # **** beam_deep_hidden is tensor of B x A x 2 x 2 x H # where 2 is number of hidden layers.
+
+        old_captions = [] #initialize captions list
+        add_more = [] #initialize the list that tracks which beams of which batches should add more.
+
+        for a_idx in range(A): # initializing the captions and add_more word tracker lists
             caption = []
             should_add = []
             for b in range(B):
@@ -158,161 +168,199 @@ class Decoder(nn.Module):
                 should_add.append(True)
             old_captions.append(caption)
             add_more.append(should_add)
+        # ^ this is important bc useing the []*number syntax
+        #  is bad bc then each list will have same memory address and not update properly
 
-        for pos in range(l):  # for each position in a given caption
 
-            print('POS:', pos)
-            print('old:', old_captions)
-            print('more:', add_more)
-            print('prev_words:', prev_words)
-            if pos > 0:
-                print('last word', [[old_captions[i][b][-1] for b in range(B)] for i in range(A)])
+        for pos in range(l): # for each position in a given caption
+            N = pos+1
+            # B x A x n x 136
+            all_paths_probs = torch.ones(a.size(0),B,B) #init probability tensor
+            all_paths_words = torch.zeros(a.size(0),B,B) #init word-idx tensor
+            all_paths_hidden = torch.zeros(B, B, A, 2, 2, H)
 
-            # print('POSITION:', pos)
-            all_paths_probs = torch.ones(a.size(0), B, B)  # init probability tensor
-            all_paths_words = torch.zeros(a.size(0), B, B)  # init word-idx tensor
+            all_paths_alphas = torch.zeros(B, B, A, N, a.size(1))
+
 
             for b in range(B):
-                hze, hidden, _ = self.calstm.predict(a, hidden, prev_word=prev_words[b])
-                pred = self.deep_output_layer(hze).squeeze(1)  # use pre
-                pred.div_(self.temperature)  # we are semi-deterministic, do we need this here?
-                pred = nn.functional.softmax(pred, dim=1)
-                pred = torch.log(pred)  # get the log probabilities for each word in vocab
-                preds_sort, ind_sort = torch.sort(pred, dim=1, descending=True)  # sort the probabilities
 
-                top_pred_words = ind_sort[:, :B]  # get the top B, where B is the beam width
-                top_pred_probs = preds_sort[:, :B]
+                hidden_temp = beam_deep_hidden[b] # [A x 2 x 2 x H]
+                hidden_temp = torch.permute(hidden_temp, (1 ,2 ,0 , 3)).contiguous() # [2 x 2 x A x H]
+                hidden_temp = (hidden_temp[0], hidden_temp[1])
+                # get the hidden layer in recognizable format for input into calstm.predict()
 
-                all_paths_probs[:, b] = top_pred_probs  # copy to the BxB matrix with all path probabilities
-                all_paths_words[:, b] = top_pred_words
+                hze, hidden_new, alpha = self.calstm.predict(a, hidden_temp, prev_word=prev_words[b])
+                # alpha size: tensor [A, 136] 
 
-            all_paths_caps = [[[old_captions[batch_idx][i] for i in range(B)] for j in range(B)] for batch_idx in
-                              range(A)]
+                # hidden new is 2-tuple of 2 x A x H tensors
+                hidden_new_tensor = torch.stack(hidden_new) #stack the tuples into tensor format
+
+                hidden_new = torch.permute(hidden_new_tensor, (2, 0 ,1 ,3))
+                # hidden new is A x 2 x 2 x H
+
+                all_paths_hidden[:,b]= torch.stack([hidden_new]*B) #make B copies so each path from a hidden state has the 
+                # same hidden state "memory"
+
+
+                pred = self.deep_output_layer(hze).squeeze(1) #use prediction using prev words to make new pred.
+                pred.div_(self.temperature) # apply temp if not deterministic
+                pred = nn.functional.softmax(pred, dim=1) # make into probabilities (sum to 1)
+                pred = torch.log(pred) # get the log probabilities for each word in vocab (to add exps instead of multiply small numbers)
+
+
+                preds_sort, ind_sort = torch.sort(pred,dim=1,descending=True) # sort the probabilities
+
+                top_pred_words = ind_sort[:,:B] # get the top B, where B is the beam width
+                top_pred_probs = preds_sort[:,:B]
+
+                all_paths_probs[:,b] = top_pred_probs #copy to the BxB matrix with all path probabilities
+                all_paths_words[:,b] = top_pred_words
+
+
+                # work with the self-attention alphas to track the same way as hidden layers etc.
+                alphas_beam = alphas[b]
+                if alphas_beam is None:
+                    alphas_beam = alpha.unsqueeze(1)
+                else:
+                    #alphas_beam = torch.tensor(alphas_beam)
+                    alphas_beam = torch.cat((alphas_beam, alpha.unsqueeze(1)), dim=1)
+
+                all_paths_alphas[:,b] = torch.stack([alphas_beam]*B)
+
+                # ***************  
+            all_paths_caps = [[[old_captions[batch_idx][i] for i in range(B)] for j in range(B)] for batch_idx in range(A)]
             all_paths_add = [[[add_more[batch_idx][i] for i in range(B)] for j in range(B)] for batch_idx in range(A)]
 
-            cap_array = np.array(all_paths_caps, dtype=list)
+            cap_array = np.array(all_paths_caps , dtype=list)
             flat_array = cap_array.reshape((cap_array.shape[0], B * B, -1))
 
-            add_array = np.array(all_paths_add, dtype=object)
+            add_array = np.array(all_paths_add,dtype=object)
             flat_add_array = add_array.reshape((add_array.shape[0], B * B, -1))
 
-            all_paths_cap_flat = flat_array.tolist()  # flatten all captions, words, and probabilities in each batch
-
+            all_paths_cap_flat = flat_array.tolist()        #flatten all captions, words, and probabilities in each batch
             all_paths_add_flat = flat_add_array.tolist()
             all_paths_words_flat = all_paths_words.flatten(start_dim=1)
             all_paths_probs_flat = all_paths_probs.flatten(start_dim=1)
+            all_paths_hidden_flat = all_paths_hidden.flatten(start_dim=0,end_dim=1)
+            all_paths_alpha_flat = all_paths_alphas.flatten(start_dim=0,end_dim = 1) # B**2 x A x N x a.size(1)
 
-            # print('flat_array.tolist(): \n', all_paths_cap_flat)
+            # B^2 x A x 2 x 2 x H
 
-            flatprob_sort, flatidx_sort = torch.sort(all_paths_probs_flat, dim=1,
-                                                     descending=True)  # sort all possibilities
+            flatprob_sort, flatidx_sort = torch.sort(all_paths_probs_flat, dim=1, descending=True) #sort all possibilities
+            # A x B
 
-            top_probs = flatprob_sort[:, :B].cuda()
-            top_words = torch.gather(all_paths_words_flat, 1, flatidx_sort[:, :B]).int().cuda()
+            top_probs = flatprob_sort[:,:B].cuda()
+            top_words = torch.gather(all_paths_words_flat, 1, flatidx_sort[:,:B]).int().cuda()
+
+            hidden_sort_idx = torch.stack([ torch.stack([ torch.stack([ flatidx_sort[:,:B] ] * 2) ] * 2) ] * H)
+            hidden_sort_idx = torch.permute(hidden_sort_idx, (3, 4, 1, 2, 0) )
+            hidden_flat_reshape = torch.permute(all_paths_hidden_flat, (1, 0 , 2 ,3, 4))
+            #  A x B^2 x 2 x 2 x H
+
+            top_hidden = torch.gather(hidden_flat_reshape, dim=1, index = hidden_sort_idx).cuda() # gather best hidden layers
+            beam_deep_hidden = torch.permute(top_hidden, (1,0,2,3,4)).contiguous()
+            # beam_deep_hidden is tensor of B x A x 2 x 2 x H
+
+
+            alpha_sort_idx = torch.stack( [torch.stack( [ flatidx_sort[:,:B] ] * a.size(1))] * N ) #  N x a.size(1) x A x B
+            alpha_sort_idx = torch.permute(alpha_sort_idx, (2, 3, 0, 1) )
+            alpha_flat_reshape = torch.permute(all_paths_alpha_flat, (1, 0, 2, 3))
+
+
+            top_alpha = torch.gather(alpha_flat_reshape, dim=1, index = alpha_sort_idx).cuda()
+            alphas = torch.permute(top_alpha, (1,0,2,3))
+
 
             top_caps = []
             add_more = []
 
+            # UPDATE CAPTIONS and ADDMORE (This is not elegant bc we're mixing lists and tensor formats, sorry.)           
             for batch_idx in range(A):
+                # we need to do the looping bc of how cloned lists are not new objects and all refer
+                # to the same memory address.
 
                 beam_caps = []
                 beam_adds = []
                 beam_words = top_words[batch_idx]
-                wd_count = 0
-                for srtidx in flatidx_sort[batch_idx, :B]:
+                wd_count=0
+                for srtidx in flatidx_sort[batch_idx,:B]:
                     word = beam_words[wd_count]
-                    wdstr = self.vocab.idx2word[word.item()]
+                    wdstr=self.vocab.idx2word[word.item()]
                     shd_add = all_paths_add_flat[batch_idx][srtidx][0]
-                    # print(word.item(),shd_add,all_paths_cap_flat[batch_idx][srtidx])
 
-                    if pos > 0:
-                        if shd_add:
-                            if type(all_paths_cap_flat[batch_idx][srtidx][0]) == list:
-                                # print('print beam cap 1', all_paths_cap_flat[batch_idx][srtidx][0])
-                                beam_caps.append(
-                                    np.append(np.array(all_paths_cap_flat[batch_idx][srtidx][0]), wdstr).tolist())
+                    if pos>0: # if position is not zero
+                        if shd_add: # add if we "should add"
+                            if type(all_paths_cap_flat[batch_idx][srtidx][0])==list:
+                                beam_caps.append( np.append(np.array(all_paths_cap_flat[batch_idx][srtidx][0]),wdstr).tolist())
                             else:
-                                # print('print beam cap 2', all_paths_cap_flat[batch_idx][srtidx])
-                                # print('to arr to lst', np.append(np.array(all_paths_cap_flat[batch_idx][srtidx]),'3').tolist() )
-                                beam_caps.append(
-                                    np.append(np.array(all_paths_cap_flat[batch_idx][srtidx]), wdstr).tolist())
-                        else:
-                            if type(all_paths_cap_flat[batch_idx][srtidx][0]) == list:
-                                # print('print beam cap 3', all_paths_cap_flat[batch_idx][srtidx][0])
+                                beam_caps.append( np.append(np.array(all_paths_cap_flat[batch_idx][srtidx]),wdstr).tolist())
+                        else: # don't add anything else, just add what we previously had to the growing list
+                            if type(all_paths_cap_flat[batch_idx][srtidx][0])==list:
                                 beam_caps.append(all_paths_cap_flat[batch_idx][srtidx][0])
                             else:
-                                # print('print beam cap 4', all_paths_cap_flat[batch_idx][srtidx])
                                 beam_caps.append(all_paths_cap_flat[batch_idx][srtidx])
-                    else:
+                    else: # if position is 0
                         if shd_add:
-                            beam_caps.append([self.vocab.idx2word[word.item()]])
-                            # beam_caps.append(all_paths_cap_flat[batch_idx][srtidx].append( self.vocab.idx2word[word.item()] ))
+                            beam_caps.append( [ self.vocab.idx2word[word.item()] ] )
                         else:
-                            beam_caps.append([])
-
-                        # beam_caps.append(all_paths_cap_flat[batch_idx][srtidx])
-                    if wdstr == '\\eos':
-                        shd_add = False
+                            beam_caps.append([ ])
+                    if wdstr=='\\eos': # if the word is the "end of sentance", stop adding to this path.
+                        shd_add=False
 
                     beam_adds.append(shd_add)
-                    wd_count += 1
-                    # print('beam_caps:', beam_caps)
-                # print('beam_adds:', beam_adds)
+                    wd_count+=1 
                 top_caps.append(beam_caps)
                 add_more.append(beam_adds)
 
-            # top_caps = [ [all_paths_cap_flat[batch_idx][srtidx] for srtidx in flatidx_sort[batch_idx,:B]] for batch_idx in range(A)]
-            # add_more = [ [all_paths_add_flat[batch_idx][srtidx][0] for srtidx in flatidx_sort[batch_idx,:B]] for batch_idx in range(A)]
+            min_probs = torch.min(prev_probs,dim=1)[0] #get the min value, not the index
+            min_probs = torch.unsqueeze(min_probs,1)
+            prev_probs = prev_probs - min_probs #dividing by the min value for each batch will not change relative order.
+            prev_probs = top_probs + prev_probs #update the probabilities in log space
 
-            min_probs = torch.min(prev_probs, dim=1)[0]  # get the min value, not the index
-            min_probs = torch.unsqueeze(min_probs, 1)
-            prev_probs = prev_probs - min_probs
-            prev_probs = top_probs + prev_probs  # update the probabilities in log space
-
-            prev_words = top_words.transpose(0, 1).reshape(B, A,
-                                                           1)  # so prev_words can fit into the self.calstm.predict funct.
+            prev_words = top_words.transpose(0,1).reshape(B,A,1) #so prev_words can fit into the self.calstm.predict funct.
 
             old_captions = top_caps
 
             if not any(np.array(add_more).ravel()):
-                # print('NO MORE POSITIONS')
                 break
 
         maxidx = torch.argmax(prev_probs, dim=1)
-        caps = [top_caps[i][maxidx[i]] for i in range(A)]  # get the best captions per batch
-        # print(caps)
-        return caps  # [list of A captions, where A is the batch number]
+        caps = [top_caps[i][maxidx[i]] for i in range(A)] # get the best captions per batch
+        alphas = torch.permute(alphas, (1,0,2,3))
+        alphas_final = [alphas[i][maxidx[i]] for i in range(A)]
 
-    def predict(self, a, hidden):
-        prev_word = None
-        captions = []
-        for _ in range(a.size(0)):
-            captions.append([])
-        add_more = [True] * a.size(
-            0)  # tells model to add another word. Marked to false when the last word added is '\\end'
+        return caps , alphas_final # [list of A best captions, where A is the batch number]
 
-        for _ in range(self.max_length):
-            hze, hidden_t, alpha = self.calstm.predict(a, hidden, prev_word=prev_word)
-            pred = self.deep_output_layer(hze).squeeze(1)
-            pred.div_(self.temperature)
-            pred = nn.functional.softmax(pred, dim=1)
-            if self.determinism:
-                word_idx = torch.argmax(pred, dim=1).view(-1, 1)
-            else:
-                word_idx = torch.multinomial(pred, 1)
+def predict(self, a, hidden):
+    prev_word = None
+    captions = []
+    for _ in range(a.size(0)):
+        captions.append([])
+    add_more = [True] * a.size(
+        0)  # tells model to add another word. Marked to false when the last word added is '\\end'
 
-            for i, (caption, idx, should_add) in enumerate(zip(captions, word_idx, add_more)):
-                if should_add:
-                    caption.append(self.vocab.idx2word[idx.item()])
-                if idx == self.vocab.word2idx['\eos']:
-                    add_more[i] = False
+    for _ in range(self.max_length):
+        hze, hidden_t, alpha = self.calstm.predict(a, hidden, prev_word=prev_word)
+        pred = self.deep_output_layer(hze).squeeze(1)
+        pred.div_(self.temperature)
+        pred = nn.functional.softmax(pred, dim=1)
+        if self.determinism:
+            word_idx = torch.argmax(pred, dim=1).view(-1, 1)
+        else:
+            word_idx = torch.multinomial(pred, 1)
 
-            if not any(add_more):
-                break
+        for i, (caption, idx, should_add) in enumerate(zip(captions, word_idx, add_more)):
+            if should_add:
+                caption.append(self.vocab.idx2word[idx.item()])
+            if idx == self.vocab.word2idx['\eos']:
+                add_more[i] = False
 
-            prev_word = word_idx
-            hidden = hidden_t
-        return captions, alpha
+        if not any(add_more):
+            break
+
+        prev_word = word_idx
+        hidden = hidden_t
+    return captions, alpha
 
 
 class ImageToLatex(nn.Module):
