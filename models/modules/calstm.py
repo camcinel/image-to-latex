@@ -141,7 +141,7 @@ class Decoder(nn.Module):
 
         return output
 
-def predict_beamsearch(self, a, hidden, B):
+    def predict_beamsearch(self, a, hidden, B):
         l = self.max_length #maximum caption output length
         A = a.size(0) # number of batches
         H = hidden[0].size(2) #size of the hidden layers
@@ -331,36 +331,36 @@ def predict_beamsearch(self, a, hidden, B):
 
         return caps , alphas_final # [list of A best captions, where A is the batch number]
 
-def predict(self, a, hidden):
-    prev_word = None
-    captions = []
-    for _ in range(a.size(0)):
-        captions.append([])
-    add_more = [True] * a.size(
-        0)  # tells model to add another word. Marked to false when the last word added is '\\end'
+    def predict(self, a, hidden):
+        prev_word = None
+        captions = []
+        for _ in range(a.size(0)):
+            captions.append([])
+        add_more = [True] * a.size(
+            0)  # tells model to add another word. Marked to false when the last word added is '\\end'
 
-    for _ in range(self.max_length):
-        hze, hidden_t, alpha = self.calstm.predict(a, hidden, prev_word=prev_word)
-        pred = self.deep_output_layer(hze).squeeze(1)
-        pred.div_(self.temperature)
-        pred = nn.functional.softmax(pred, dim=1)
-        if self.determinism:
-            word_idx = torch.argmax(pred, dim=1).view(-1, 1)
-        else:
-            word_idx = torch.multinomial(pred, 1)
+        for _ in range(self.max_length):
+            hze, hidden_t, alpha = self.calstm.predict(a, hidden, prev_word=prev_word)
+            pred = self.deep_output_layer(hze).squeeze(1)
+            pred.div_(self.temperature)
+            pred = nn.functional.softmax(pred, dim=1)
+            if self.determinism:
+                word_idx = torch.argmax(pred, dim=1).view(-1, 1)
+            else:
+                word_idx = torch.multinomial(pred, 1)
 
-        for i, (caption, idx, should_add) in enumerate(zip(captions, word_idx, add_more)):
-            if should_add:
-                caption.append(self.vocab.idx2word[idx.item()])
-            if idx == self.vocab.word2idx['\eos']:
-                add_more[i] = False
+            for i, (caption, idx, should_add) in enumerate(zip(captions, word_idx, add_more)):
+                if should_add:
+                    caption.append(self.vocab.idx2word[idx.item()])
+                if idx == self.vocab.word2idx['\eos']:
+                    add_more[i] = False
 
-        if not any(add_more):
-            break
+            if not any(add_more):
+                break
 
-        prev_word = word_idx
-        hidden = hidden_t
-    return captions, alpha
+            prev_word = word_idx
+            hidden = hidden_t
+        return captions, alpha
 
 
 class ImageToLatex(nn.Module):
