@@ -195,10 +195,15 @@ class Experiment(object):
                     test_loss += self.__criterion(output_loss.view(-1, len(self.__vocab)), captions.view(-1)) * images.size(0)
                     cnt += images.size(0)
                     
-                    if 'beam_width' in config_data['generation'].keys() and self.__beam_width > 1:
-                         output = self.__best_model.predict_beamsearch(images, self.__beam_width)
+                    if 'beam_width' in config_data['generation'].keys():
+                         if self.__beam_width > 1:
+                            output = self.__best_model.predict_beamsearch(images, self.__beam_width)
+                         else:
+                            output = self.__best_model.predict(images)
+                            
                     else:
                          output = self.__best_model.predict(images)
+                            
                     for j in range(images.size(0)):
                         actual_cap = remove([self.__vocab.idx2word[x.item()] for x in captions[j]])
                         if self.__model_type != 'calstm':
