@@ -1,6 +1,8 @@
 # Image To Latex
 Image tp Latex final project for CSE-251B in UCSD, four models implemented. Best run ResNet-Transformer can get 93% BLEU-1 score.
 
+You can read the full report [here](Final_Project.pdf)
+
 ## Usage
 * Please run the cell in `get_dataset.ipynb` to download the dataset.
 * Define the configuration for your experiment. See `.json` files to see the structure and available options.
